@@ -1,0 +1,1385 @@
+{
+  "prompt": {
+    "6": {
+      "inputs": {
+        "image": "cs_red_head_tpose_1024.png"
+      },
+      "class_type": "Trellis2LoadImageWithTransparency",
+      "_meta": {
+        "title": "Image with Transparency"
+      }
+    },
+    "219": {
+      "inputs": {
+        "value": "confirm_full"
+      },
+      "class_type": "PrimitiveString",
+      "_meta": {
+        "title": "Name"
+      }
+    },
+    "303": {
+      "inputs": {
+        "rem_mode": "RMBG-1.4",
+        "image_output": "Preview",
+        "save_prefix": "ComfyUI",
+        "torchscript_jit": false,
+        "add_background": "none",
+        "refine_foreground": false,
+        "images": [
+          "6",
+          0
+        ]
+      },
+      "class_type": "easy imageRemBg",
+      "_meta": {
+        "title": "Image Remove Bg"
+      }
+    },
+    "304": {
+      "inputs": {
+        "input": [
+          "303",
+          1
+        ]
+      },
+      "class_type": "PreviewImageOrMask",
+      "_meta": {
+        "title": "Preview Image Or Mask"
+      }
+    },
+    "317": {
+      "inputs": {
+        "modelname": "TRELLIS.2-4B",
+        "model_format": "GGUF Q8_0",
+        "backend": "flash_attn",
+        "device": "cuda",
+        "low_vram": true,
+        "keep_models_loaded": false
+      },
+      "class_type": "Trellis2LoadModel_GGUF",
+      "_meta": {
+        "title": "Trellis2 - LoadModel (GGUF)"
+      }
+    },
+    "318": {
+      "inputs": {
+        "switch": false,
+        "on_false": [
+          "319",
+          0
+        ],
+        "on_true": [
+          "317",
+          0
+        ]
+      },
+      "class_type": "ComfySwitchNode",
+      "_meta": {
+        "title": "full-false/ gguf-ture"
+      }
+    },
+    "319": {
+      "inputs": {
+        "modelname": "TencentARC/Pixal3D-T",
+        "backend": "flash_attn",
+        "device": "cuda",
+        "low_vram": true,
+        "keep_models_loaded": false,
+        "conv_backend": "flex_gemm",
+        "sparse_backend": "flash_attn",
+        "use_reconviagen": false
+      },
+      "class_type": "Trellis2LoadModel",
+      "_meta": {
+        "title": "Trellis2 - LoadModel"
+      }
+    },
+    "328": {
+      "inputs": {
+        "switch": false,
+        "on_false": [
+          "330",
+          0
+        ],
+        "on_true": [
+          "332",
+          0
+        ]
+      },
+      "class_type": "ComfySwitchNode",
+      "_meta": {
+        "title": "If/Else Switch"
+      }
+    },
+    "330": {
+      "inputs": {
+        "string": "9999"
+      },
+      "class_type": "StringLength",
+      "_meta": {
+        "title": "Text Length"
+      }
+    },
+    "332": {
+      "inputs": {
+        "string": "999999"
+      },
+      "class_type": "StringLength",
+      "_meta": {
+        "title": "Text Length"
+      }
+    },
+    "356": {
+      "inputs": {
+        "filename_prefix": "3d/finalmesh/finalmesh",
+        "viewport_state": {
+          "image": "",
+          "mask": "",
+          "normal": "",
+          "camera_info": {
+            "position": {
+              "x": -0.0020007904007772583,
+              "y": 2.9655674138764594,
+              "z": -0.049605290690603834
+            },
+            "target": {
+              "x": -0.0019400119781494143,
+              "y": -0.029265254735946655,
+              "z": -0.05162486433982849
+            },
+            "zoom": 1,
+            "cameraType": "perspective",
+            "quaternion": {
+              "x": -0.7067882377322281,
+              "y": -0.010640051905248025,
+              "z": -0.010632875929961195,
+              "w": 0.7072652389650457
+            },
+            "fov": 21,
+            "aspect": 1,
+            "near": 0.01,
+            "far": 10000,
+            "frustum": {
+              "left": -5,
+              "right": 5,
+              "top": 5,
+              "bottom": -5
+            }
+          },
+          "recording": "",
+          "model_3d_info": []
+        },
+        "width": 1024,
+        "height": 1024,
+        "model_3d": [
+          "311:406",
+          0
+        ]
+      },
+      "class_type": "Save3DAdvanced",
+      "_meta": {
+        "title": "Save finalmesh (output/3d/finalmesh)"
+      }
+    },
+    "311:217": {
+      "inputs": {
+        "resolution": [
+          "311:300",
+          1
+        ],
+        "use_tiled_decoder": true,
+        "pipeline": [
+          "311:296",
+          1
+        ],
+        "shape_slat": [
+          "311:300",
+          0
+        ],
+        "texture_slat": [
+          "311:296",
+          0
+        ]
+      },
+      "class_type": "Trellis2DecodeLatents",
+      "_meta": {
+        "title": "Trellis2 - Decode Latents"
+      }
+    },
+    "311:215": {
+      "inputs": {
+        "resolution": 512,
+        "shape_steps": 40,
+        "shape_guidance_strength": 7.5,
+        "shape_guidance_rescale": 0.5,
+        "shape_rescale_t": 3.0,
+        "shape_sampler": "euler",
+        "shape_guidance_interval_start": 0.6,
+        "shape_guidance_interval_end": 1.0,
+        "verbose": false,
+        "dino_lock": 0.0,
+        "dino_substeps": 2,
+        "dino_foundation_cap": 0.92,
+        "pipeline": [
+          "311:272",
+          2
+        ],
+        "image_cond": [
+          "311:213",
+          0
+        ],
+        "coords": [
+          "311:272",
+          0
+        ],
+        "image": [
+          "311:194",
+          0
+        ],
+        "moge_camera_config": [
+          "311:213",
+          3
+        ]
+      },
+      "class_type": "Trellis2ShapeGenerator",
+      "_meta": {
+        "title": "Trellis2 - Shape Generator"
+      }
+    },
+    "311:296": {
+      "inputs": {
+        "resolution": 1024,
+        "texture_steps": 30,
+        "texture_guidance_strength": 1.0,
+        "texture_guidance_rescale": 0.0,
+        "texture_rescale_t": 3.0,
+        "texture_sampler": "euler",
+        "texture_guidance_interval_start": 0.6,
+        "texture_guidance_interval_end": 0.9,
+        "verbose": false,
+        "dino_lock": 0.0,
+        "dino_substeps": 2,
+        "dino_foundation_cap": 0.92,
+        "from_resolution": [
+          "311:300",
+          1
+        ],
+        "pipeline": [
+          "311:300",
+          2
+        ],
+        "image_cond": [
+          "311:213",
+          1
+        ],
+        "shape_slat": [
+          "311:300",
+          0
+        ],
+        "image": [
+          "311:194",
+          0
+        ],
+        "moge_camera_config": [
+          "311:213",
+          3
+        ]
+      },
+      "class_type": "Trellis2TexSlatGenerator",
+      "_meta": {
+        "title": "Trellis TexSlat (geometry decode only; surface paint = UltraTex)"
+      }
+    },
+    "311:300": {
+      "inputs": {
+        "from_resolution": [
+          "311:215",
+          1
+        ],
+        "to_resolution": 1536,
+        "sparse_structure_resolution": [
+          "311:272",
+          1
+        ],
+        "max_num_tokens": [
+          "328",
+          0
+        ],
+        "shape_steps": 30,
+        "shape_guidance_strength": 7.5,
+        "shape_guidance_rescale": 0.5,
+        "shape_rescale_t": 3.0,
+        "shape_sampler": "euler",
+        "shape_guidance_interval_start": 0.6,
+        "shape_guidance_interval_end": 1.0,
+        "verbose": false,
+        "dino_lock": 0.0,
+        "dino_substeps": 2,
+        "dino_foundation_cap": 0.92,
+        "pipeline": [
+          "311:215",
+          2
+        ],
+        "image_cond": [
+          "311:213",
+          1
+        ],
+        "shape_slat": [
+          "311:215",
+          0
+        ],
+        "image": [
+          "311:194",
+          0
+        ],
+        "moge_camera_config": [
+          "311:213",
+          3
+        ]
+      },
+      "class_type": "Trellis2ShapeCascadeGenerator",
+      "_meta": {
+        "title": "Trellis2 - Shape Cascade Generator"
+      }
+    },
+    "311:194": {
+      "inputs": {
+        "padding": 5,
+        "remove_background": false,
+        "max_size": 1536,
+        "image": [
+          "303",
+          0
+        ]
+      },
+      "class_type": "Trellis2PreProcessImage",
+      "_meta": {
+        "title": "Trellis2 - PreProcess Image"
+      }
+    },
+    "311:272": {
+      "inputs": {
+        "seed": 484043845,
+        "sparse_structure_steps": 30,
+        "sparse_structure_guidance_strength": 7.5,
+        "sparse_structure_guidance_rescale": 0.7,
+        "sparse_structure_rescale_t": 5.0,
+        "sparse_structure_sampler": "euler",
+        "sparse_structure_resolution": 32,
+        "sparse_structure_guidance_interval_start": 0.6,
+        "sparse_structure_guidance_interval_end": 1.0,
+        "fill_holes": true,
+        "hole_iterations": 9,
+        "verbose": false,
+        "dino_lock": 0.0,
+        "dino_substeps": 2,
+        "hole_fill_algorithm": "remove_small_holes",
+        "dino_foundation_cap": 0.92,
+        "keep_only_shell": true,
+        "pipeline": [
+          "311:213",
+          2
+        ],
+        "image_cond": [
+          "311:213",
+          0
+        ],
+        "image": [
+          "311:194",
+          0
+        ],
+        "moge_camera_config": [
+          "311:213",
+          3
+        ]
+      },
+      "class_type": "Trellis2SparseGenerator",
+      "_meta": {
+        "title": "Trellis2 - Sparse Generator"
+      }
+    },
+    "311:299": {
+      "inputs": {
+        "mesh": [
+          "311:335",
+          0
+        ]
+      },
+      "class_type": "Trellis2FillHolesWithMeshlib",
+      "_meta": {
+        "title": "Trellis2 - Fill Holes with Meshlib"
+      }
+    },
+    "311:213": {
+      "inputs": {
+        "max_views": 1,
+        "pipeline": [
+          "318",
+          0
+        ],
+        "image": [
+          "311:194",
+          0
+        ]
+      },
+      "class_type": "Trellis2ImageCondGenerator",
+      "_meta": {
+        "title": "Trellis2 - ImageCond Generator"
+      }
+    },
+    "311:333": {
+      "inputs": {
+        "max_permieters": 0.03,
+        "mesh": [
+          "311:217",
+          0
+        ]
+      },
+      "class_type": "Trellis2FillHolesWithCuMesh_GGUF",
+      "_meta": {
+        "title": "Trellis2 - Fill Holes with CuMesh (GGUF)"
+      }
+    },
+    "311:335": {
+      "inputs": {
+        "max_permieters": 0.01,
+        "mesh": [
+          "311:333",
+          0
+        ]
+      },
+      "class_type": "Trellis2FillHolesWithCuMesh_GGUF",
+      "_meta": {
+        "title": "Trellis2 - Fill Holes with CuMesh (GGUF)"
+      }
+    },
+    "311:340": {
+      "inputs": {
+        "input_res": 1536,
+        "final_res": 1536,
+        "proxy_points": 12000000,
+        "proxy_eps_scale": 1.0,
+        "proxy_feature_weight": 1.5,
+        "lambda_fill": 20.0,
+        "threads": 16,
+        "thin_iso_vox": 0.0,
+        "faithc_component_mode": "largest",
+        "mesh": [
+          "311:341",
+          0
+        ]
+      },
+      "class_type": "WTiVoNativeMeshToMesh",
+      "_meta": {
+        "title": "3 \u00b7 WTiVo (make watertight)"
+      }
+    },
+    "311:341": {
+      "inputs": {
+        "enabled": true,
+        "always_run": true,
+        "clean_vram": true,
+        "clean_ram": true,
+        "input_1": [
+          "311:418",
+          0
+        ]
+      },
+      "class_type": "MemoryCleaner",
+      "_meta": {
+        "title": "2 \u00b7 Free VRAM for WTiVo"
+      }
+    },
+    "311:342": {
+      "inputs": {
+        "blender_path": [
+          "311:346",
+          0
+        ],
+        "target_tris": 6000000,
+        "passes": 100,
+        "tolerance": 1.05,
+        "intermediate_ratio": 0.5,
+        "last_ratio": 0.25,
+        "final_ratio": 0.2,
+        "triangulate": true,
+        "symmetry": false,
+        "voxel_rebuild": false,
+        "relative_voxel_size": 0.001,
+        "minimum_voxel_size": 1e-06,
+        "seal_distance": 0.0001,
+        "seal_max_steps": 100,
+        "seal_keep_trying": true,
+        "timeout_seconds": 1800,
+        "mesh": [
+          "311:340",
+          0
+        ]
+      },
+      "class_type": "LODTailorTheMeshTrimmer",
+      "_meta": {
+        "title": "4 \u00b7 LODTailor \u2013 lighter + stays watertight (Blender)"
+      }
+    },
+    "311:343": {
+      "inputs": {
+        "merge_distance": 1e-05,
+        "centroid_merge": false,
+        "remove_degenerate": true,
+        "topology_mode": "STRICT_BLENDER",
+        "adaptive_retry_step": true,
+        "max_attempts": 12,
+        "model": [
+          "311:345",
+          0
+        ]
+      },
+      "class_type": "WTiVoFastMergeByDistance",
+      "_meta": {
+        "title": "6 \u00b7 Fast Merge (BYPASSED \u2014 AF-clean default)"
+      }
+    },
+    "311:344": {
+      "inputs": {
+        "filename_prefix": "3d/watertight/watertight",
+        "viewport_state": "",
+        "width": 1024,
+        "height": 1024,
+        "model_3d": [
+          "311:345",
+          0
+        ]
+      },
+      "class_type": "Save3DAdvanced",
+      "_meta": {
+        "title": "Watertight \u2192 output/3d/watertight/"
+      }
+    },
+    "311:345": {
+      "inputs": {
+        "mesh": [
+          "311:342",
+          0
+        ]
+      },
+      "class_type": "MeshToFile3D",
+      "_meta": {
+        "title": "5 \u00b7 Mesh \u2192 GLB"
+      }
+    },
+    "311:346": {
+      "inputs": {
+        "value": "blender"
+      },
+      "class_type": "PrimitiveString",
+      "_meta": {
+        "title": "Blender path \u2013 set once (clean Blender recommended)"
+      }
+    },
+    "311:353": {
+      "inputs": {
+        "reorient_zup_to_yup": false,
+        "mesh": [
+          "311:335",
+          0
+        ]
+      },
+      "class_type": "MeshWithVoxelToNativeBridge",
+      "_meta": {
+        "title": "BRIDGE: MeshWithVoxel -> native MESH+VOXEL (in-memory)"
+      }
+    },
+    "311:354": {
+      "inputs": {
+        "mesh": [
+          "311:353",
+          0
+        ]
+      },
+      "class_type": "MeshToFile3D",
+      "_meta": {
+        "title": "Mesh \u2192 GLB"
+      }
+    },
+    "311:355": {
+      "inputs": {
+        "viewport_state": "",
+        "width": 1024,
+        "height": 1024,
+        "model_3d": [
+          "311:354",
+          0
+        ]
+      },
+      "class_type": "Preview3DAdvanced",
+      "_meta": {
+        "title": "Preview 3D (Advanced)"
+      }
+    },
+    "311:369": {
+      "inputs": {
+        "target_face_num": 1000000,
+        "method": "Cumesh",
+        "mesh": [
+          "311:335",
+          0
+        ]
+      },
+      "class_type": "Trellis2SimplifyMesh",
+      "_meta": {
+        "title": "Trellis2 - Simplify Mesh"
+      }
+    },
+    "311:370": {
+      "inputs": {
+        "mesh": [
+          "311:369",
+          0
+        ]
+      },
+      "class_type": "Trellis2FillHolesWithMeshlib",
+      "_meta": {
+        "title": "Trellis2 - Fill Holes with Meshlib"
+      }
+    },
+    "311:372": {
+      "inputs": {
+        "file": [
+          "311:401",
+          0
+        ]
+      },
+      "class_type": "UTXFileToMesh",
+      "_meta": {
+        "title": "UTX File to Mesh"
+      }
+    },
+    "311:373": {
+      "inputs": {
+        "unet_name": "flux-2-klein-base-9b-Q4_0.gguf"
+      },
+      "class_type": "UnetLoaderGGUF",
+      "_meta": {
+        "title": "Unet Loader (GGUF)"
+      }
+    },
+    "311:374": {
+      "inputs": {
+        "vae_name": "flux2-vae.safetensors"
+      },
+      "class_type": "VAELoader",
+      "_meta": {
+        "title": "Load VAE"
+      }
+    },
+    "311:375": {
+      "inputs": {
+        "clip_name": "Qwen3-8B-Q4_K_M.gguf",
+        "type": "flux2"
+      },
+      "class_type": "CLIPLoaderGGUF",
+      "_meta": {
+        "title": "CLIPLoader (GGUF)"
+      }
+    },
+    "311:376": {
+      "inputs": {
+        "text": "",
+        "clip": [
+          "311:375",
+          0
+        ]
+      },
+      "class_type": "UTXTextEncode",
+      "_meta": {
+        "title": "Empty prompt (albedo)"
+      }
+    },
+    "311:377": {
+      "inputs": {
+        "lora_name": "ultratex_flux2.safetensors",
+        "lora_strength": 1.0,
+        "decoder_name": "ultratex_flux2_decoder.pt",
+        "task": "albedo",
+        "view_resolution": 1024,
+        "view_count": 12,
+        "seed": 0,
+        "steps": 4,
+        "guidance": 4.0,
+        "denoise": 1.0,
+        "sparse_retention": 0.2,
+        "extra_angle_mode": "guided",
+        "extra_denoise": 0.55,
+        "extra_steps": 4,
+        "tiled_decode": true,
+        "source": [
+          "311:393",
+          0
+        ],
+        "model": [
+          "311:373",
+          0
+        ],
+        "vae": [
+          "311:374",
+          0
+        ],
+        "positive": [
+          "311:376",
+          0
+        ],
+        "negative": [
+          "311:394",
+          0
+        ]
+      },
+      "class_type": "UTXGenerateTextureViewsV23",
+      "_meta": {
+        "title": "Generate \u00b7 Albedo (resolution + views HERE)"
+      }
+    },
+    "311:378": {
+      "inputs": {
+        "images": [
+          "311:377",
+          2
+        ]
+      },
+      "class_type": "PreviewImage",
+      "_meta": {
+        "title": "All generated views"
+      }
+    },
+    "311:379": {
+      "inputs": {
+        "filename_prefix": "ultratex/sellsword_ultratex_only",
+        "image": "",
+        "mesh": [
+          "311:395",
+          0
+        ]
+      },
+      "class_type": "SaveGLB",
+      "_meta": {
+        "title": "Save 3D Model"
+      }
+    },
+    "311:380": {
+      "inputs": {
+        "filename_prefix": "ultratex/sellsword_base_color",
+        "images": [
+          "311:395",
+          2
+        ]
+      },
+      "class_type": "SaveImage",
+      "_meta": {
+        "title": "Save Image"
+      }
+    },
+    "311:382": {
+      "inputs": {
+        "lora_name": "ultratex_flux2_mr.safetensors",
+        "lora_strength": 1.0,
+        "decoder_name": "ultratex_flux2_decoder.pt",
+        "task": "mr",
+        "view_resolution": 1024,
+        "view_count": 6,
+        "seed": 0,
+        "steps": 4,
+        "guidance": 4.0,
+        "denoise": 1.0,
+        "sparse_retention": 0.2,
+        "extra_angle_mode": "independent",
+        "extra_denoise": 0.55,
+        "extra_steps": 4,
+        "tiled_decode": true,
+        "source": [
+          "311:393",
+          0
+        ],
+        "model": [
+          "311:373",
+          0
+        ],
+        "vae": [
+          "311:374",
+          0
+        ],
+        "positive": [
+          "311:376",
+          0
+        ],
+        "negative": [
+          "311:394",
+          0
+        ]
+      },
+      "class_type": "UTXGenerateTextureViewsV23",
+      "_meta": {
+        "title": "Generate \u00b7 Metallic-Roughness (6 views)"
+      }
+    },
+    "311:383": {
+      "inputs": {
+        "images": [
+          "311:382",
+          2
+        ]
+      },
+      "class_type": "PreviewImage",
+      "_meta": {
+        "title": "MR generated views"
+      }
+    },
+    "311:384": {
+      "inputs": {
+        "filename_prefix": "ultratex/sellsword_roughness",
+        "images": [
+          "311:395",
+          3
+        ]
+      },
+      "class_type": "SaveImage",
+      "_meta": {
+        "title": "Save roughness map"
+      }
+    },
+    "311:385": {
+      "inputs": {
+        "filename_prefix": "ultratex/sellsword_metallic",
+        "images": [
+          "311:395",
+          4
+        ]
+      },
+      "class_type": "SaveImage",
+      "_meta": {
+        "title": "Save metallic map"
+      }
+    },
+    "311:386": {
+      "inputs": {
+        "bg_removal_name": "birefnet.safetensors"
+      },
+      "class_type": "LoadBackgroundRemovalModel",
+      "_meta": {
+        "title": "Load Background Removal Model"
+      }
+    },
+    "311:387": {
+      "inputs": {
+        "bg_removal_model": [
+          "311:386",
+          0
+        ],
+        "image": [
+          "303",
+          0
+        ]
+      },
+      "class_type": "RemoveBackground",
+      "_meta": {
+        "title": "Remove Background"
+      }
+    },
+    "311:388": {
+      "inputs": {
+        "images": [
+          "311:393",
+          2
+        ]
+      },
+      "class_type": "PreviewImage",
+      "_meta": {
+        "title": "Actual 6 RGB normal views (preview)"
+      }
+    },
+    "311:389": {
+      "inputs": {
+        "images": [
+          "311:393",
+          3
+        ]
+      },
+      "class_type": "PreviewImage",
+      "_meta": {
+        "title": "Aligned colored reference (preview)"
+      }
+    },
+    "311:390": {
+      "inputs": {
+        "mask": [
+          "311:393",
+          4
+        ]
+      },
+      "class_type": "MaskToImage",
+      "_meta": {
+        "title": "Convert Mask to Image"
+      }
+    },
+    "311:391": {
+      "inputs": {
+        "images": [
+          "311:390",
+          0
+        ]
+      },
+      "class_type": "PreviewImage",
+      "_meta": {
+        "title": "Aligned foreground mask (preview)"
+      }
+    },
+    "311:392": {
+      "inputs": {
+        "atlas_size": 2048,
+        "uv_mode": "keep_existing",
+        "padding": 16,
+        "mesh": [
+          "311:372",
+          0
+        ]
+      },
+      "class_type": "UTXUnwrapMeshUVV25",
+      "_meta": {
+        "title": "UV unwrap (keep_existing \u2014 low-poly UVs from UnwrapMesh/Bake Forger)"
+      }
+    },
+    "311:393": {
+      "inputs": {
+        "alignment": "front",
+        "mask_polarity": "foreground",
+        "normal_mode": "auto_smooth",
+        "normal_view_resolution": 1024,
+        "camera_fit": "native_mesh_fit",
+        "image_margin_percent": 0.0,
+        "image_padding_pixels": 0,
+        "reference_zoom": 1.0,
+        "mesh": [
+          "311:392",
+          0
+        ],
+        "reference": [
+          "303",
+          0
+        ],
+        "mask": [
+          "311:387",
+          0
+        ],
+        "runtime": [
+          "311:405",
+          0
+        ]
+      },
+      "class_type": "UTXPrepareTextureV25",
+      "_meta": {
+        "title": "Prepare mesh + reference"
+      }
+    },
+    "311:394": {
+      "inputs": {
+        "text": "",
+        "clip": [
+          "311:375",
+          0
+        ]
+      },
+      "class_type": "UTXTextEncode",
+      "_meta": {
+        "title": "Empty prompt (MR)"
+      }
+    },
+    "311:395": {
+      "inputs": {
+        "texture_size": 2048,
+        "completion": "surface_fill",
+        "upscale_mode": "sharp_anchor_v2",
+        "device": "auto",
+        "albedo_setup": [
+          "311:377",
+          3
+        ],
+        "albedo_views": [
+          "311:377",
+          0
+        ],
+        "mr_setup": [
+          "311:382",
+          3
+        ],
+        "mr_views": [
+          "311:382",
+          0
+        ]
+      },
+      "class_type": "UTXFastSurfaceTextureBaker",
+      "_meta": {
+        "title": "3. Fast Surface Texture Baker (UltraTex 2.2, sharp_anchor_v2)"
+      }
+    },
+    "311:396": {
+      "inputs": {
+        "viewport_state": "",
+        "width": 1024,
+        "height": 1024,
+        "model_3d": [
+          "311:395",
+          1
+        ]
+      },
+      "class_type": "Preview3DAdvanced",
+      "_meta": {
+        "title": "Preview 3D (Advanced)"
+      }
+    },
+    "311:401": {
+      "inputs": {
+        "enabled": true,
+        "always_run": true,
+        "clean_vram": true,
+        "clean_ram": true,
+        "input_1": [
+          "311:415",
+          0
+        ]
+      },
+      "class_type": "MemoryCleaner",
+      "_meta": {
+        "title": "Free VRAM before UltraTex"
+      }
+    },
+    "311:402": {
+      "inputs": {
+        "normal_convention": "OpenGL",
+        "alpha_mode": "inherit",
+        "alpha_cutoff": 0.5,
+        "uv_convention": "v_down",
+        "mesh": [
+          "311:392",
+          0
+        ],
+        "base_color": [
+          "311:395",
+          2
+        ]
+      },
+      "class_type": "UTXApplyMaterials",
+      "_meta": {
+        "title": "Apply: albedo on clean UV mesh (dielectric defaults)"
+      }
+    },
+    "311:403": {
+      "inputs": {
+        "mesh": [
+          "311:402",
+          0
+        ]
+      },
+      "class_type": "UTXCreate3DFile",
+      "_meta": {
+        "title": "Final mesh \u2192 GLB"
+      }
+    },
+    "311:404": {
+      "inputs": {
+        "filename_prefix": "3d/finalmesh/finalmesh",
+        "viewport_state": "",
+        "width": 1024,
+        "height": 1024,
+        "model_3d": [
+          "311:406",
+          0
+        ]
+      },
+      "class_type": "Save3DAdvanced",
+      "_meta": {
+        "title": "FINAL mesh \u2192 output/3d/finalmesh/"
+      }
+    },
+    "311:405": {
+      "inputs": {
+        "spill_directory": "",
+        "ram_cache_mb": 256,
+        "disk_budget_gb": 16.0,
+        "system_headroom_mb": 2048,
+        "gpu_headroom_mb": 768,
+        "token_chunk": 4096,
+        "activation_factor": 12.0,
+        "atlas_tile": 512,
+        "decode_tile": 64,
+        "performance_mode": "adaptive",
+        "max_vram_mb": 0,
+        "adaptive_diagnostics": false
+      },
+      "class_type": "UTXConfigureRuntime",
+      "_meta": {
+        "title": "UltraTex scratch folder (blank = output/.ultratex_cache, emptied by the Cache Cleaner after each run)"
+      }
+    },
+    "311:406": {
+      "inputs": {
+        "mode": "delete_when_executed",
+        "confirm_delete_on_run": true,
+        "Scan Size": "Scan Size",
+        "Delete Now": "Delete Now",
+        "passthrough": [
+          "311:403",
+          0
+        ]
+      },
+      "class_type": "UTXCacheCleaner",
+      "_meta": {
+        "title": "UTX 4 \u00b7 Cache Cleaner (empties output/.ultratex_cache after the run)"
+      }
+    },
+    "311:408": {
+      "inputs": {
+        "blender_path": [
+          "311:346",
+          0
+        ],
+        "target_tris": 60000,
+        "passes": 3,
+        "tolerance": 1.05,
+        "intermediate_ratio": 0.5,
+        "last_ratio": 0.25,
+        "final_ratio": 0.2,
+        "triangulate": true,
+        "symmetry": false,
+        "voxel_rebuild": true,
+        "relative_voxel_size": 0.0015,
+        "minimum_voxel_size": 1e-06,
+        "seal_distance": 0.0001,
+        "seal_max_steps": 100,
+        "seal_keep_trying": true,
+        "timeout_seconds": 1800,
+        "mesh": [
+          "311:342",
+          0
+        ]
+      },
+      "class_type": "LODTailorTheMeshTrimmer",
+      "_meta": {
+        "title": "A \u00b7 LODTailor low-poly (60k)"
+      }
+    },
+    "311:409": {
+      "inputs": {
+        "blender_path": [
+          "311:346",
+          0
+        ],
+        "target_tris": 60000,
+        "passes": 2,
+        "tolerance": 1.05,
+        "intermediate_ratio": 0.5,
+        "last_ratio": 0.25,
+        "final_ratio": 0.2,
+        "triangulate": true,
+        "symmetry": false,
+        "voxel_rebuild": true,
+        "relative_voxel_size": 0.002,
+        "minimum_voxel_size": 1e-06,
+        "seal_distance": 0.0005,
+        "seal_max_steps": 100,
+        "seal_keep_trying": false,
+        "timeout_seconds": 1800,
+        "mesh": [
+          "311:408",
+          0
+        ]
+      },
+      "class_type": "LODTailorTheMeshTrimmer",
+      "_meta": {
+        "title": "A2 \u00b7 Seal low-poly (BYPASSED \u2014 A voxel_rebuild seals)"
+      }
+    },
+    "311:410": {
+      "inputs": {
+        "segmenter": "pec",
+        "resolution": 1536,
+        "padding": 2,
+        "weld_distance": 0.0002,
+        "mesh": [
+          "311:408",
+          0
+        ]
+      },
+      "class_type": "UnwrapMesh",
+      "_meta": {
+        "title": "Unwrap UVs (low-poly)"
+      }
+    },
+    "311:411": {
+      "inputs": {
+        "crease_angle": 180.0,
+        "mesh": [
+          "311:410",
+          0
+        ]
+      },
+      "class_type": "MeshSmoothNormals",
+      "_meta": {
+        "title": "Smooth normals"
+      }
+    },
+    "311:412": {
+      "inputs": {
+        "mesh": [
+          "311:411",
+          0
+        ]
+      },
+      "class_type": "MeshToFile3D",
+      "_meta": {
+        "title": "Low-poly \u2192 GLB"
+      }
+    },
+    "311:413": {
+      "inputs": {
+        "enabled": true,
+        "always_run": true,
+        "clean_vram": true,
+        "clean_ram": true,
+        "input_1": [
+          "311:412",
+          0
+        ],
+        "input_2": [
+          "311:345",
+          0
+        ]
+      },
+      "class_type": "MemoryCleaner",
+      "_meta": {
+        "title": "Free memory before baking"
+      }
+    },
+    "311:414": {
+      "inputs": {
+        "blender_path": [
+          "311:346",
+          0
+        ],
+        "prefer_gpu_baking": true,
+        "hybrid_cpu_gpu_baking": true,
+        "bake_sample_count": 1,
+        "bake_normal_detail": true,
+        "normal_map_resolution": 2048,
+        "copy_base_color_texture": false,
+        "base_color_resolution": 2048,
+        "bake_roughness_texture": false,
+        "roughness_resolution": 2048,
+        "bake_metallic_texture": false,
+        "metallic_resolution": 2048,
+        "bake_emission_texture": false,
+        "emission_resolution": 2048,
+        "bake_ao_texture": false,
+        "ao_resolution": 2048,
+        "brighter": false,
+        "auto_bake_margin": true,
+        "bake_margin_pixels": 16,
+        "bake_margin_minimum_pixels": 16,
+        "bake_margin_resolution_divisor": 256,
+        "fallback_bake_mode": "AUTO",
+        "coverage_probe_sample_count": 4096,
+        "extended_ray_sample_ratio": 0.005,
+        "fallback_minimum_recoverable_samples": 8,
+        "tight_cage_extrusion_factor": 0.0019,
+        "tight_max_ray_distance_factor": 0.029,
+        "far_cage_extrusion_factor": 0.02,
+        "far_max_ray_distance_factor": 0.092,
+        "coverage_alpha_threshold": 0.5,
+        "normal_length_tolerance": 0.35,
+        "neutral_normal_color": "0.5,0.5,1.0,1.0",
+        "material_base_color": "0.8,0.8,0.8,1.0",
+        "material_roughness": 0.9,
+        "material_metallic": 0.0,
+        "material_specular_level": 0.5,
+        "load_output_images": true,
+        "high_poly": [
+          "311:413",
+          1
+        ],
+        "low_poly": [
+          "311:413",
+          0
+        ]
+      },
+      "class_type": "LODTailorBakeForger",
+      "_meta": {
+        "title": "B \u00b7 Bake Forger (normals from high-poly)"
+      }
+    },
+    "311:415": {
+      "inputs": {
+        "merge_distance": 0.0001,
+        "centroid_merge": false,
+        "remove_degenerate": true,
+        "topology_mode": "TEXTURE_SAFE",
+        "adaptive_retry_step": true,
+        "max_attempts": 100,
+        "model": [
+          "311:414",
+          0
+        ]
+      },
+      "class_type": "WTiVoFastMergeByDistance",
+      "_meta": {
+        "title": "C \u00b7 Fast Merge (TEXTURE_SAFE)"
+      }
+    },
+    "311:416": {
+      "inputs": {
+        "filename_prefix": "3d/lowpoly_prerig/lowpoly_prerig",
+        "viewport_state": "",
+        "width": 1024,
+        "height": 1024,
+        "model_3d": [
+          "311:415",
+          0
+        ]
+      },
+      "class_type": "Save3DAdvanced",
+      "_meta": {
+        "title": "Low-poly prerig \u2192 output/3d/lowpoly_prerig/"
+      }
+    },
+    "311:417": {
+      "inputs": {
+        "filename_prefix": "3d/base mesh/base mesh",
+        "viewport_state": "",
+        "width": 1024,
+        "height": 1024,
+        "model_3d": [
+          "311:354",
+          0
+        ]
+      },
+      "class_type": "Save3DAdvanced",
+      "_meta": {
+        "title": "Base mesh \u2192 output/3d/base mesh/"
+      }
+    },
+    "311:418": {
+      "inputs": {
+        "remesh_band": 1.0,
+        "resolution": 1536,
+        "remove_floaters": true,
+        "remove_inner_faces": true,
+        "mesh": [
+          "311:353",
+          0
+        ]
+      },
+      "class_type": "MeshReconstructWithQuad",
+      "_meta": {
+        "title": "1 \u00b7 Quad Reconstruct (PA05 look \u2014 1536)"
+      }
+    }
+  },
+  "client_id": "character-studio"
+}
