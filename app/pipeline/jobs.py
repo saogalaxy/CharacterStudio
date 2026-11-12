@@ -185,6 +185,21 @@ class Studio:
             raise KeyError(ident)
         return job
 
+    def delete(self, ident):
+        job = self.get(ident)
+        running = next((s for s in STEPS if job.meta["steps"][s].get("state") == "running"), None)
+        if running:
+            raise RuntimeError(f"{job.meta['name']} is still running {running}")
+        folder = job.dir.resolve()
+        root = rt.JOBS.resolve()
+        if folder != root and root not in folder.parents:
+            raise RuntimeError("job folder is outside the jobs directory")
+        rt.kill_comfy_orphans(folder)
+        self.jobs.pop(ident, None)
+        shutil.rmtree(folder, ignore_errors=True)
+        if folder.exists():
+            raise RuntimeError("could not remove the job folder")
+
     def run(self, job, step):
         if step not in STEPS:
             raise ValueError(f"unknown step {step}")

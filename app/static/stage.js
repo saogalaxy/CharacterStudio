@@ -24,6 +24,126 @@ const LANDMARKS = [
   { id: "ankle_r", label: "ankle", tone: "anchor", joints: ["foot_r", "ball_r", "toe_r"] },
 ];
 const BY_ID = Object.fromEntries(LANDMARKS.map((s) => [s.id, s]));
+
+function jointLabel(name) {
+  let side = "";
+  let text = name;
+  if (text.endsWith("_l")) {
+    side = " (L)";
+    text = text.slice(0, -2);
+  } else if (text.endsWith("_r")) {
+    side = " (R)";
+    text = text.slice(0, -2);
+  }
+  text = text.replace("upperarm", "upper arm").replace("lowerarm", "lower arm").replaceAll("_", " ");
+  return text.replace(/\b\w/g, (ch) => ch.toUpperCase()) + side;
+}
+
+const AF_VIEW = {
+  pelvis: "Hips",
+  spine_01: "Low belly",
+  spine_02: "Mid belly",
+  spine_03: "Chest",
+  neck_base: "Neck",
+  head: "Head",
+  head_top: "Crown",
+  clavicle_l: "Collarbone",
+  clavicle_r: "Collarbone",
+  upperarm_l: "Shoulder",
+  upperarm_r: "Shoulder",
+  lowerarm_l: "Elbow",
+  lowerarm_r: "Elbow",
+  hand_l: "Wrist",
+  hand_r: "Wrist",
+  hand_tip_l: "Fingertip",
+  hand_tip_r: "Fingertip",
+  thigh_l: "Hip",
+  thigh_r: "Hip",
+  calf_l: "Knee",
+  calf_r: "Knee",
+  foot_l: "Ankle",
+  foot_r: "Ankle",
+  ball_l: "Toes",
+  ball_r: "Toes",
+  toe_l: "Toe tips",
+  toe_r: "Toe tips",
+};
+const PLACE = {
+  pelvis: "Center of the hips, where the legs meet the body",
+  spine_01: "Low on the belly, just above the hips",
+  spine_02: "On the belly, halfway up to the chest",
+  spine_03: "On the chest",
+  neck_base: "At the base of the neck, between the collarbones",
+  head: "On the head, level with the jaw",
+  head_top: "At the top of the head",
+  clavicle_l: "On the left collarbone, from the base of the neck out to the shoulder",
+  clavicle_r: "On the right collarbone, from the base of the neck out to the shoulder",
+  upperarm_l: "On the left shoulder, where the arm leaves the body",
+  upperarm_r: "On the right shoulder, where the arm leaves the body",
+  lowerarm_l: "On the left elbow, at the bend of the arm",
+  lowerarm_r: "On the right elbow, at the bend of the arm",
+  hand_l: "On the left wrist",
+  hand_r: "On the right wrist",
+  hand_tip_l: "At the end of the left fingers",
+  hand_tip_r: "At the end of the right fingers",
+  thigh_l: "On the outside of the left hip",
+  thigh_r: "On the outside of the right hip",
+  calf_l: "On the left knee",
+  calf_r: "On the right knee",
+  foot_l: "On the left ankle",
+  foot_r: "On the right ankle",
+  ball_l: "Across the base of the left toes",
+  ball_r: "Across the base of the right toes",
+  toe_l: "At the tips of the left toes",
+  toe_r: "At the tips of the right toes",
+};
+const ENDS = new Set(["head_top", "hand_tip_l", "hand_tip_r", "toe_l", "toe_r"]);
+const SIDE = { c: 0xf5c542, l: 0x3d8bfd, r: 0xe23b3b };
+const SIDE_END = { c: 0xc9a84a, l: 0x9ec1ff, r: 0xf0a0a0 };
+
+export const SKELETON_DOTS = [
+  "pelvis", "spine_01", "spine_02", "spine_03", "neck_base", "head", "head_top",
+  "clavicle_l", "upperarm_l", "lowerarm_l", "hand_l", "hand_tip_l",
+  "clavicle_r", "upperarm_r", "lowerarm_r", "hand_r", "hand_tip_r",
+  "thigh_l", "calf_l", "foot_l", "ball_l", "toe_l",
+  "thigh_r", "calf_r", "foot_r", "ball_r", "toe_r",
+];
+
+export function bonePlace(name) {
+  const where = PLACE[name];
+  return where ? where + ". It should sit on the body." : "It should sit on the body.";
+}
+
+export function boneLabel(name) {
+  const base = AF_VIEW[name] || name;
+  if (name.endsWith("_l")) return base + " (L)";
+  if (name.endsWith("_r")) return base + " (R)";
+  return base;
+}
+
+function sideKey(name) {
+  if (name.endsWith("_l")) return "l";
+  if (name.endsWith("_r")) return "r";
+  return "c";
+}
+
+export function dotColor(name) {
+  const key = sideKey(name);
+  return ENDS.has(name) ? SIDE_END[key] : SIDE[key];
+}
+
+export function dotColorCss(name) {
+  return "#" + dotColor(name).toString(16).padStart(6, "0");
+}
+
+export function visibleDots(joints) {
+  const have = new Set(Object.keys(joints || {}).filter((name) => !name.includes("leaf") && name !== "neck"));
+  const listed = SKELETON_DOTS.filter((id) => have.has(id));
+  const extra = [...have].filter((id) => !SKELETON_DOTS.includes(id)).sort();
+  return [...listed, ...extra];
+}
+
+export { jointLabel };
 const LINKS = [
   ["pelvis", "spine_01"], ["spine_01", "spine_02"], ["spine_02", "spine_03"],
   ["spine_03", "neck_base"], ["neck_base", "head"], ["head", "head_top"],
@@ -45,6 +165,10 @@ export class Stage {
     box.appendChild(this.renderer.domElement);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
+    this.controls.enableZoom = true;
+    this.controls.enablePan = true;
+    this.controls.enableRotate = true;
+    this.controls.zoomToCursor = true;
     this.loader = new GLTFLoader();
     this.clock = new THREE.Clock();
     this.mixer = null;
@@ -80,6 +204,7 @@ export class Stage {
     box.addEventListener("pointermove", (e) => this._move(e));
     window.addEventListener("pointerup", (e) => this._up(e));
     box.addEventListener("pointermove", (e) => this._hover(e));
+    box.addEventListener("pointerleave", () => { if (!this.drag) this._hideGrabLabel(); });
     this._resize = () => this.resize();
     window.addEventListener("resize", this._resize);
     this.resize();
@@ -111,6 +236,7 @@ export class Stage {
       this.bones = null;
     }
     this.envelopes.clear();
+    this._hideGrabLabel();
   }
 
   async loadMesh(url) {
@@ -251,15 +377,21 @@ export class Stage {
       left: [center.x + d, center.y, center.z],
       right: [center.x - d, center.y, center.z],
     };
-    this.controls.enabled = name === "free";
+    this.controls.enabled = true;
     if (spots[name]) {
       this.camera.position.set(...spots[name]);
       this.camera.up.set(0, 1, 0);
       this.camera.lookAt(center);
+      this.controls.target.copy(center);
     }
-    this.controls.target.copy(center);
     this.controls.update();
     document.querySelectorAll(".views button").forEach((b) => b.classList.toggle("on", b.dataset.view === name));
+  }
+
+  _releaseView() {
+    if (this.view === "free") return;
+    this.view = "free";
+    document.querySelectorAll(".views button").forEach((b) => b.classList.toggle("on", b.dataset.view === "free"));
   }
 
   setDots(joints, height, offJoints, offMarkers, unlocked) {
@@ -290,7 +422,7 @@ export class Stage {
       this.dots[spec.id] = mesh;
       const lab = document.createElement("div");
       lab.className = "label";
-      lab.textContent = spec.label;
+      lab.textContent = jointLabel(spec.id);
       lab.hidden = true;
       this.box.appendChild(lab);
       this.labels[spec.id] = lab;
@@ -316,11 +448,12 @@ export class Stage {
     this.bones.renderOrder = 5;
     this.scene.add(this.bones);
     this._clearDots();
-    for (const [name, value] of Object.entries(this.joints)) {
-      if (name.startsWith("toe") || name.includes("leaf")) continue;
+    for (const name of visibleDots(this.joints)) {
+      const value = this.joints[name];
+      if (!value) continue;
       const mesh = new THREE.Mesh(
         new THREE.SphereGeometry(this.H * 0.01, 12, 10),
-        new THREE.MeshBasicMaterial({ color: 0x7ec8ff, depthTest: false }),
+        new THREE.MeshBasicMaterial({ color: dotColor(name), depthTest: false }),
       );
       mesh.position.copy(toThree(value));
       mesh.userData = { kind: "joint", id: name, blender: value.slice() };
@@ -362,9 +495,20 @@ export class Stage {
     }
   }
 
+  dismissHint() {
+    clearTimeout(this.hintTimer);
+    this.hintTimer = null;
+    this._hideGrabLabel();
+  }
+
   _hover(ev) {
-    if (this.showLabels) return;
+    if (this.drag) return;
     const hit = this._pick(ev);
+    if (hit && hit.userData.kind === "joint") {
+      this._showGrabLabel(hit.userData.id);
+      return;
+    }
+    if (this.showLabels) return;
     for (const [id, lab] of Object.entries(this.labels)) lab.hidden = !hit || hit.userData.id !== id;
     if (hit && this.labels[hit.userData.id]) this._placeLabel(hit.userData.id);
   }
@@ -399,7 +543,11 @@ export class Stage {
 
   _down(ev) {
     const hit = this._pick(ev);
-    if (!hit) return;
+    if (!hit) {
+      if (ev.button === 0) this._releaseView();
+      return;
+    }
+    this.controls.enabled = false;
     const spec = BY_ID[hit.userData.id];
     if (spec && spec.tone === "follow" && !this.unlocked.has(spec.id)) {
       this.unlocked.add(spec.id);
@@ -407,6 +555,7 @@ export class Stage {
       this.onUnlocked && this.onUnlocked(spec.id);
     }
     this.drag = { id: hit.userData.id, kind: hit.userData.kind, last: hit.userData.blender.slice() };
+    if (this.drag.kind === "joint") this._showGrabLabel(this.drag.id);
     this._planeThrough(hit.position);
     ev.preventDefault();
   }
@@ -439,6 +588,7 @@ export class Stage {
     if (this.drag.kind === "dot") this._shiftDot(this.drag.id, delta);
     else this._shiftJoint(this.drag.id, delta);
     if (this.sym) this._mirrorShift(this.drag.id, delta);
+    if (this.drag.kind === "joint") this._placeGrabLabel();
   }
 
   _shiftDot(id, delta) {
@@ -480,10 +630,62 @@ export class Stage {
   }
 
   _up() {
+    this.controls.enabled = true;
     if (!this.drag) return;
     const moved = this.drag.id;
     this.drag = null;
+    this._armHintFade();
     this.onJoints && this.onJoints(this.joints, moved);
+  }
+
+  _showGrabLabel(id) {
+    if (!this.grabLabel) {
+      const lab = document.createElement("div");
+      lab.className = "label";
+      this.box.appendChild(lab);
+      this.grabLabel = lab;
+    }
+    const changed = this.hintId !== id || this.grabLabel.hidden;
+    this.grabLabel.hidden = false;
+    if (changed) {
+      this.grabLabel.replaceChildren();
+      const name = document.createElement("b");
+      name.textContent = boneLabel(id);
+      name.style.color = dotColorCss(id);
+      const where = document.createElement("small");
+      where.textContent = bonePlace(id);
+      this.grabLabel.append(name, where);
+      this.grabLabel.style.opacity = "1";
+      this._armHintFade();
+    }
+    this.hintId = id;
+    this._placeGrabLabel();
+  }
+
+  _armHintFade() {
+    clearTimeout(this.hintTimer);
+    this.hintTimer = setTimeout(() => this._fadeHint(), 5000);
+  }
+
+  _fadeHint() {
+    this.hintTimer = null;
+    if (!this.grabLabel || this.grabLabel.hidden) return;
+    this.grabLabel.style.opacity = "0";
+    this.hintTimer = setTimeout(() => this._hideGrabLabel(), 400);
+  }
+
+  _placeGrabLabel() {
+    const mesh = this.dots[this.hintId];
+    const lab = this.grabLabel;
+    if (!mesh || !lab || lab.hidden) return;
+    const p = mesh.position.clone().project(this.camera);
+    lab.style.left = `${(p.x * 0.5 + 0.5) * this.box.clientWidth}px`;
+    lab.style.top = `${(-p.y * 0.5 + 0.5) * this.box.clientHeight}px`;
+  }
+
+  _hideGrabLabel() {
+    this.hintId = null;
+    if (this.grabLabel) this.grabLabel.hidden = true;
   }
 
   play(name) {

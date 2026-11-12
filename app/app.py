@@ -56,6 +56,16 @@ async def job_state(request):
     return web.json_response(_job(request).state())
 
 
+async def job_delete(request):
+    try:
+        studio.delete(request.match_info["job"])
+    except KeyError:
+        raise web.HTTPNotFound(text="no such job")
+    except RuntimeError as exc:
+        raise web.HTTPConflict(text=str(exc))
+    return web.json_response({"ok": True})
+
+
 async def job_run(request):
     step = request.match_info["step"]
     if step not in STEPS:
@@ -146,6 +156,7 @@ def make_app():
     app.router.add_get("/api/jobs", job_list)
     app.router.add_post("/api/jobs", job_create)
     app.router.add_get("/api/jobs/{job}", job_state)
+    app.router.add_delete("/api/jobs/{job}", job_delete)
     app.router.add_post("/api/jobs/{job}/run/{step}", job_run)
     app.router.add_post("/api/jobs/{job}/upload/{step}", job_upload)
     app.router.add_post("/api/jobs/{job}/tpose-settings", tpose_settings)

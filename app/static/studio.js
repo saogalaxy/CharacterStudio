@@ -1,19 +1,20 @@
-import { Stage } from "./stage.js?v=skel3";
+import { Stage, boneLabel, bonePlace, dotColorCss } from "./stage.js?v=af5";
 
 const STEPS = [
   ["source", "Source"],
   ["tpose", "T-pose"],
   ["mesh", "Mesh"],
   ["markers", "Markers"],
-  ["skeleton", "Skeleton"],
   ["rig", "Rig"],
   ["animations", "Animations"],
 ];
 
 const bar = document.getElementById("bar");
+const jobsBox = document.getElementById("jobs");
 const panel = document.getElementById("panel");
 const stageBox = document.getElementById("stage");
 
+let jobs = [];
 let job = null;
 let view = "mesh";
 let stage = null;
@@ -27,6 +28,7 @@ let panelKey = "";
 let shown = "";
 let seenSent = false;
 let posting = false;
+let showBones = true;
 
 async function api(path, options) {
   const res = await fetch(path, options);
@@ -40,13 +42,8 @@ function fileUrl(name) {
 }
 
 async function boot() {
-  const list = await api("/api/jobs");
-  job = list.jobs.find((row) => row.name === "anime") || list.jobs[0] || null;
-  if (!job) job = await api("/api/jobs", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name: "Character" }),
-  });
+  jobs = (await api("/api/jobs")).jobs;
+  job = jobs[0] || null;
   library = (await api("/api/motion-library")).clips;
   stage = new Stage(stageBox);
   stage.onJoints = (joints, moved) => postJSON("markers", { joints, moved });
@@ -60,8 +57,10 @@ async function boot() {
     views.appendChild(button);
   }
   stageBox.appendChild(views);
-  const first = STEPS.find(([id]) => job.steps[id].state !== "done");
-  view = first ? first[0] : "animations";
+  if (job) {
+    const first = STEPS.find(([id]) => job.steps[id].state !== "done");
+    view = first ? first[0] : "animations";
+  }
   render();
   setInterval(poll, 1500);
 }
@@ -105,17 +104,114 @@ async function upload(step, file) {
   }
 }
 
+async function createJob(name) {
+  const created = await api("/api/jobs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  jobs = (await api("/api/jobs")).jobs;
+  return jobs.find((row) => row.id === created.id) || created;
+}
+
+async function openJob(next) {
+  job = await api(`/api/jobs/${next.id}`);
+  seenSent = false;
+  showBones = true;
+  shown = "";
+  panelKey = "";
+  const first = STEPS.find(([id]) => job.steps[id].state !== "done");
+  view = first ? first[0] : "animations";
+  render();
+}
+
+function drawJobs() {
+  jobsBox.replaceChildren();
+  const heading = document.createElement("h2");
+  heading.textContent = "Jobs";
+  jobsBox.appendChild(heading);
+  jobsBox.appendChild(button("+ New", async () => {
+    const name = (window.prompt("Job name", "Character") || "").trim();
+    if (!name) return;
+    openJob(await createJob(name));
+  }, true));
+  const ordered = [...jobs].sort((a, b) => a.name.localeCompare(b.name));
+  for (const row of ordered) {
+    const line = document.createElement("div");
+    line.className = "job";
+    const el = button(row.name, () => {
+      if (job && row.id === job.id) return;
+      openJob(row);
+    });
+    if (job && row.id === job.id) el.className = (el.className ? el.className + " " : "") + "on";
+    const remove = button("Delete", () => deleteJob(row));
+    remove.className = "danger";
+    line.append(el, remove);
+    jobsBox.appendChild(line);
+  }
+}
+
+async function deleteJob(row) {
+  if (!window.confirm(`Delete ${row.name}? This removes the job and its files.`)) return;
+  posting = true;
+  try {
+    await api(`/api/jobs/${row.id}`, { method: "DELETE" });
+    jobs = jobs.filter((item) => item.id !== row.id);
+    if (!job || job.id === row.id) {
+      const next = jobs[0];
+      job = next ? await api(`/api/jobs/${next.id}`) : null;
+      seenSent = false;
+      shown = "";
+      if (job) {
+        const first = STEPS.find(([id]) => job.steps[id].state !== "done");
+        view = first ? first[0] : "animations";
+      }
+    }
+  } catch (err) {
+    window.alert(err.message || String(err));
+  } finally {
+    posting = false;
+    panelKey = "";
+    render();
+  }
+}
+
 function render() {
+  drawJobs();
+  if (!job) {
+    bar.replaceChildren();
+    panel.replaceChildren();
+    const note = document.createElement("p");
+    note.className = "help";
+    note.textContent = "No jobs. Use + New to start one.";
+    panel.appendChild(note);
+    if (stage) stage.clearModel();
+    stageBox.querySelector(".fit")?.remove();
+    return;
+  }
+  if (view !== "animations") stageBox.querySelector(".fit")?.remove();
+  if (view !== "rig") stage.dismissHint();
   bar.replaceChildren();
-  for (const [id, label] of STEPS) {
+  STEPS.forEach(([id, label], index) => {
     const button = document.createElement("button");
     const state = job.steps[id]?.state || "empty";
     button.className = "step" + (view === id ? " on" : "") + (state === "done" ? " done" : "") + (state === "running" ? " run" : "");
-    button.textContent = label;
-    button.onclick = () => { view = id; panelKey = ""; shown = ""; render(); };
+    const badge = document.createElement("span");
+    badge.className = "badge";
+    badge.textContent = state === "done" ? "✓" : String(index + 1);
+    const title = document.createElement("b");
+    title.textContent = label;
+    button.append(badge, title);
+    button.onclick = () => {
+      view = id;
+      if (id === "rig") showBones = true;
+      panelKey = "";
+      shown = "";
+      render();
+    };
     bar.appendChild(button);
-  }
-  const key = [view, job.running, job.steps[view]?.message, job.skeleton_seen, job.animations?.selected, (job.off_body || []).join(), showLabels, showEnv].join("|");
+  });
+  const key = [view, showBones, job.running, job.steps[view]?.message, job.skeleton_seen, job.animations?.selected, (job.off_body || []).join(), showLabels, showEnv].join("|");
   if (key !== panelKey) {
     panelKey = key;
     drawPanel();
@@ -156,13 +252,13 @@ function drawPanel() {
   panel.replaceChildren();
   const status = document.createElement("p");
   status.className = "status";
-  status.textContent = job.steps[view]?.message || "";
+  const statusId = view === "rig" && job.running !== "rig" ? "skeleton" : view;
+  status.textContent = job.steps[statusId]?.message || "";
   panel.appendChild(status);
   if (view === "source") drawSource();
   if (view === "tpose") drawTpose();
   if (view === "mesh") drawMesh();
   if (view === "markers") drawMarkers();
-  if (view === "skeleton") drawSkeleton();
   if (view === "rig") drawRig();
   if (view === "animations") drawAnimations();
 }
@@ -268,24 +364,111 @@ function drawMarkers() {
   panel.appendChild(box);
 }
 
-function drawSkeleton() {
+function guideDot(svg, x, y, name) {
+  const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  dot.setAttribute("cx", x);
+  dot.setAttribute("cy", y);
+  dot.setAttribute("r", "3.2");
+  dot.setAttribute("fill", dotColorCss(name));
+  const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+  title.textContent = boneLabel(name) + ". " + bonePlace(name);
+  dot.appendChild(title);
+  svg.appendChild(dot);
+}
+
+function guideBody(svg, d) {
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", d);
+  path.setAttribute("fill", "#1a1f28");
+  path.setAttribute("stroke", "#3a4454");
+  path.setAttribute("stroke-width", "1.5");
+  svg.appendChild(path);
+}
+
+function placeGuide() {
+  const wrap = document.createElement("div");
+  wrap.className = "guide";
+  const front = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  front.setAttribute("viewBox", "0 0 160 220");
+  guideBody(front, "M80 8c10 0 16 8 16 16s-6 14-16 14-16-6-16-14 6-16 16-16zM64 40h32l8 28 22 8 18 36 8 28-10 4-8-24-14-8v22l8 46 4 28h-12l-2-26-8-44h-16l-8 44-2 26H52l4-28 8-46v-22l-14 8-8 24-10-4 8-28 18-36 22-8z");
+  const frontDots = [
+    [80, 10, "head_top"], [80, 24, "head"], [80, 42, "neck_base"],
+    [62, 50, "clavicle_l"], [98, 50, "clavicle_r"],
+    [44, 54, "upperarm_l"], [116, 54, "upperarm_r"],
+    [80, 64, "spine_03"],
+    [26, 86, "lowerarm_l"], [134, 86, "lowerarm_r"],
+    [80, 88, "spine_02"],
+    [16, 116, "hand_l"], [144, 116, "hand_r"],
+    [80, 108, "spine_01"],
+    [80, 124, "pelvis"],
+    [66, 128, "thigh_l"], [94, 128, "thigh_r"],
+    [12, 138, "hand_tip_l"], [148, 138, "hand_tip_r"],
+    [66, 168, "calf_l"], [94, 168, "calf_r"],
+    [66, 200, "foot_l"], [94, 200, "foot_r"],
+    [58, 212, "ball_l"], [102, 212, "ball_r"],
+    [50, 216, "toe_l"], [110, 216, "toe_r"],
+  ];
+  for (const [x, y, name] of frontDots) guideDot(front, x, y, name);
+  const side = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  side.setAttribute("viewBox", "0 0 120 220");
+  guideBody(side, "M52 8c12 0 20 8 22 16 4 2 8 8 6 14-6 4-16 4-24 0-6-6-8-14-4-20 0-6 0-10 0-10zM40 42h28l10 20 16 10 14 22 6 18-8 6-6-16-10-8-4 18 6 48 2 28h-10l-2-26-6-46H58l-4 46-2 26H42l2-28 6-48-6-16-12 8-6 16-8-6 8-20 16-12 10-18z");
+  const sideDots = [
+    [58, 12, "head_top"], [70, 26, "head"], [54, 42, "neck_base"],
+    [72, 50, "clavicle_l"], [48, 54, "upperarm_l"], [78, 66, "spine_03"],
+    [92, 82, "lowerarm_l"], [70, 90, "spine_02"], [104, 108, "hand_l"],
+    [66, 108, "spine_01"], [54, 124, "pelvis"], [48, 130, "thigh_l"],
+    [112, 126, "hand_tip_l"], [56, 170, "calf_l"], [52, 202, "foot_l"],
+    [70, 212, "ball_l"], [82, 216, "toe_l"],
+  ];
+  for (const [x, y, name] of sideDots) guideDot(side, x, y, name);
+  for (const [svg, caption] of [[front, "Front"], [side, "Side"]]) {
+    const fig = document.createElement("figure");
+    const cap = document.createElement("figcaption");
+    cap.textContent = caption;
+    fig.append(svg, cap);
+    wrap.appendChild(fig);
+  }
+  return wrap;
+}
+
+function drawRig() {
   if (job.files.markers && !seenSent) {
     seenSent = true;
     postJSON("skeleton/seen", {});
   }
-  const box = card("Skeleton");
+  const box = card("Rig");
   const help = document.createElement("p");
   help.className = "help";
-  help.textContent = "Bones are on the mesh. Drag a joint in front, side, back, or free. Nothing is bound until you bind from here.";
+  help.textContent = "Hover a dot to see where it should sit on the body. Yellow is the middle, blue the left, red the right.";
   box.appendChild(help);
+  const bones = document.createElement("label");
+  bones.className = "row";
+  const boneTick = document.createElement("input");
+  boneTick.type = "checkbox";
+  boneTick.checked = showBones;
+  boneTick.onchange = () => {
+    showBones = boneTick.checked;
+    if (!showBones) showEnv = false;
+    paintMarkers();
+    const envBox = box.querySelector("input[data-env]");
+    if (envBox) envBox.checked = showEnv;
+  };
+  bones.append("Show skeleton", boneTick);
+  box.appendChild(bones);
+  if (showBones && job.markers?.joints) box.appendChild(placeGuide());
   const env = document.createElement("label");
   env.className = "row";
   const envTick = document.createElement("input");
   envTick.type = "checkbox";
+  envTick.dataset.env = "1";
   envTick.checked = showEnv;
   envTick.onchange = () => {
     showEnv = envTick.checked;
-    stage.showEnvelopes(showEnv, job.markers?.envelopes || {});
+    if (showEnv && !showBones) {
+      showBones = true;
+      boneTick.checked = true;
+    }
+    paintMarkers();
   };
   env.append("Show envelopes", envTick);
   box.appendChild(env);
@@ -315,19 +498,6 @@ function drawSkeleton() {
   box.appendChild(fingers);
   const blocked = (job.off_body || []).length || (job.joints_off_body || []).length || !job.skeleton_seen;
   box.appendChild(button("Bind & wear", () => postJSON("run/rig", {}), true, blocked || !job.can_run.rig && job.running !== null));
-  panel.appendChild(box);
-}
-
-function drawRig() {
-  const box = card("Rig");
-  const help = document.createElement("p");
-  help.className = "help";
-  help.textContent = job.files.rig
-    ? "Bind pose. The skeleton stays put until you choose a motion."
-    : "Bind & wear keeps the mesh on screen while the weights are built.";
-  box.appendChild(help);
-  const blocked = !job.skeleton_seen || (job.off_body || []).length || (job.joints_off_body || []).length;
-  box.appendChild(button("Bind & wear", () => postJSON("run/rig", {}), true, blocked || job.running === "rig"));
   panel.appendChild(box);
 }
 
@@ -444,12 +614,11 @@ async function syncStage() {
   if (!stage || !job) return;
   stage.setShowLabels(showLabels);
   const rigging = job.running === "rig" && !job.files.rig;
-  const plainMesh = view === "rig" && job.files.mesh && !job.files.rig;
   let mode = "empty";
   if (view === "source" && job.files.source) mode = "image:source.png";
   else if (view === "tpose" && job.files.tpose) mode = "image:tpose.png";
-  else if ((view === "markers" || view === "skeleton" || view === "mesh" || rigging || plainMesh) && job.files.mesh) mode = "mesh";
-  else if ((view === "rig" || view === "animations") && job.files.rig) mode = view === "rig" ? "hold" : "play";
+  else if (view === "animations" && job.files.rig) mode = "play";
+  else if ((view === "markers" || view === "mesh" || view === "rig" || rigging) && job.files.mesh) mode = "mesh";
   if (mode === shown) {
     if (mode === "mesh") paintMarkers();
     return;
@@ -487,7 +656,7 @@ function paintMarkers() {
     stage.clearOverlay();
     return;
   }
-  if (view === "skeleton") {
+  if (view === "rig" && showBones && job.running !== "rig") {
     stage.setBones(det.joints, det.height);
     stage.showEnvelopes(showEnv, det.envelopes || {});
   } else if (view === "markers" && det?.joints) {
