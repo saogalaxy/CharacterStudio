@@ -1,0 +1,381 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 760" width="1280" height="760" font-family="system-ui, -apple-system, &#39;Segoe UI&#39;, Roboto, sans-serif">
+  <defs>
+    <style>
+      .bg { fill: #14171d; }
+      .panel { fill: #1c2029; stroke: #2d3340; stroke-width: 1.5; }
+      .sil { fill: #2b313e; stroke: #475166; stroke-width: 1.5; }
+      .bone { stroke: #e5b84b; stroke-width: 2; fill: none; opacity: 0.85; }
+      .leader { stroke: #6e7a91; stroke-width: 1; fill: none; }
+      .title { fill: #f3f5f8; font-size: 20px; font-weight: 700; letter-spacing: 0.5px; }
+      .subtitle { fill: #9aa5b8; font-size: 13px; }
+      .view-hdr { fill: #e5b84b; font-size: 14px; font-weight: 700; letter-spacing: 1px; }
+      .lbl-c { fill: #f5c84c; font-size: 12px; font-weight: 600; }
+      .lbl-l { fill: #5aa2ff; font-size: 12px; font-weight: 600; }
+      .lbl-r { fill: #ff6464; font-size: 12px; font-weight: 600; }
+      .lbl-s { fill: #d7deea; font-size: 12px; font-weight: 500; }
+      .key-hdr { fill: #f3f5f8; font-size: 13px; font-weight: 700; }
+      .dot-c { fill: #f5c84c; stroke: #14171d; stroke-width: 1.5; }
+      .dot-l { fill: #3b82f6; stroke: #14171d; stroke-width: 1.5; }
+      .dot-r { fill: #ef4444; stroke: #14171d; stroke-width: 1.5; }
+      .dot-tip-l { fill: #93c5fd; stroke: #14171d; stroke-width: 1.5; }
+      .dot-tip-r { fill: #fca5a5; stroke: #14171d; stroke-width: 1.5; }
+    </style>
+  </defs>
+
+  <!-- Background -->
+  <rect class="bg" width="1280" height="760" />
+
+  <!-- Header -->
+  <text x="640" y="38" text-anchor="middle" class="title">IK SKELETON MARKER PLACEMENT GUIDE</text>
+  <text x="640" y="58" text-anchor="middle" class="subtitle">Place spine markers along the volumetric center depth • Tuck Shoulder and Hip markers inside anatomical sockets</text>
+
+  <!-- Panels -->
+  <rect class="panel" x="24" y="76" width="530" height="660" rx="10" />
+  <rect class="panel" x="572" y="76" width="320" height="660" rx="10" />
+  <rect class="panel" x="910" y="76" width="346" height="660" rx="10" />
+
+  <text x="289" y="104" text-anchor="middle" class="view-hdr">FRONT VIEW (ANATOMICAL L / R)</text>
+  <text x="732" y="104" text-anchor="middle" class="view-hdr">MARKER KEY (27 POINTS)</text>
+  <text x="1083" y="104" text-anchor="middle" class="view-hdr">SIDE VIEW (DEPTH)</text>
+
+  <!-- ==================== FRONT VIEW SILHOUETTE (Center X = 289) ==================== -->
+  <g id="front-silhouette">
+    <!-- Head & Neck -->
+    <ellipse class="sil" cx="289" cy="166" rx="26" ry="34" />
+    <rect class="sil" x="276" y="196" width="26" height="24" rx="6" />
+    <!-- Torso & Arms (A-Pose) -->
+    <path class="sil" d="
+      M 276 216
+      L 228 232
+      L 174 316
+      L 142 396
+      L 124 434
+      L 132 440
+      L 152 404
+      L 192 326
+      L 236 262
+      L 244 338
+      L 234 408
+      L 238 548
+      L 246 666
+      L 224 686
+      L 258 688
+      L 266 666
+      L 278 548
+      L 289 432
+      L 300 548
+      L 312 666
+      L 320 688
+      L 354 686
+      L 332 666
+      L 340 548
+      L 344 408
+      L 334 338
+      L 342 262
+      L 386 326
+      L 426 404
+      L 446 440
+      L 454 434
+      L 436 396
+      L 404 316
+      L 350 232
+      L 302 216
+      Z" />
+  </g>
+
+  <!-- Front View Skeleton Lines -->
+  <g class="bone">
+    <!-- Spine -->
+    <line x1="289" y1="132" x2="289" y2="404" />
+    <!-- Right Arm (Viewer Left) -->
+    <polyline points="289,232 268,236 232,248 184,320 148,398 129,435" />
+    <!-- Left Arm (Viewer Right) -->
+    <polyline points="289,232 310,236 346,248 394,320 430,398 449,435" />
+    <!-- Right Leg (Viewer Left) -->
+    <polyline points="289,404 260,412 256,548 254,666 244,680 230,686" />
+    <!-- Left Leg (Viewer Right) -->
+    <polyline points="289,404 318,412 322,548 324,666 334,680 348,686" />
+  </g>
+
+  <!-- Front View Dots: Center (7) -->
+  <circle class="dot-c" cx="289" cy="132" r="5" /><!-- Crown -->
+  <circle class="dot-c" cx="289" cy="166" r="5" /><!-- Head -->
+  <circle class="dot-c" cx="289" cy="208" r="5" /><!-- Neck -->
+  <circle class="dot-c" cx="289" cy="256" r="5" /><!-- Chest -->
+  <circle class="dot-c" cx="289" cy="312" r="5" /><!-- Mid belly -->
+  <circle class="dot-c" cx="289" cy="360" r="5" /><!-- Low belly -->
+  <circle class="dot-c" cx="289" cy="404" r="5" /><!-- Hips -->
+
+  <!-- Front View Dots: Character Right / Viewer Left (10 Red) -->
+  <circle class="dot-r" cx="268" cy="236" r="5" /><!-- Collarbone (R) -->
+  <circle class="dot-r" cx="232" cy="248" r="5" /><!-- Shoulder (R) -->
+  <circle class="dot-r" cx="184" cy="320" r="5" /><!-- Elbow (R) -->
+  <circle class="dot-r" cx="148" cy="398" r="5" /><!-- Wrist (R) -->
+  <circle class="dot-tip-r" cx="129" cy="435" r="5" /><!-- Fingertip (R) -->
+  <circle class="dot-r" cx="260" cy="412" r="5" /><!-- Hip (R) -->
+  <circle class="dot-r" cx="256" cy="548" r="5" /><!-- Knee (R) -->
+  <circle class="dot-r" cx="254" cy="666" r="5" /><!-- Ankle (R) -->
+  <circle class="dot-r" cx="244" cy="680" r="5" /><!-- Toes (R) -->
+  <circle class="dot-tip-r" cx="230" cy="686" r="5" /><!-- Toe tips (R) -->
+
+  <!-- Front View Dots: Character Left / Viewer Right (10 Blue) -->
+  <circle class="dot-l" cx="310" cy="236" r="5" /><!-- Collarbone (L) -->
+  <circle class="dot-l" cx="346" cy="248" r="5" /><!-- Shoulder (L) -->
+  <circle class="dot-l" cx="394" cy="320" r="5" /><!-- Elbow (L) -->
+  <circle class="dot-l" cx="430" cy="398" r="5" /><!-- Wrist (L) -->
+  <circle class="dot-tip-l" cx="449" cy="435" r="5" /><!-- Fingertip (L) -->
+  <circle class="dot-l" cx="318" cy="412" r="5" /><!-- Hip (L) -->
+  <circle class="dot-l" cx="322" cy="548" r="5" /><!-- Knee (L) -->
+  <circle class="dot-l" cx="324" cy="666" r="5" /><!-- Ankle (L) -->
+  <circle class="dot-l" cx="334" cy="680" r="5" /><!-- Toes (L) -->
+  <circle class="dot-tip-l" cx="348" cy="686" r="5" /><!-- Toe tips (L) -->
+
+  <!-- Front View Callout Labels -->
+  <!-- Left Column: Character Right (Red) -->
+  <polyline class="leader" points="268,236 245,204 128,204" />
+  <text x="122" y="208" text-anchor="end" class="lbl-r">Collarbone (R)</text>
+
+  <line class="leader" x1="232" y1="248" x2="128" y2="248" />
+  <text x="122" y="252" text-anchor="end" class="lbl-r">Shoulder (R)</text>
+
+  <line class="leader" x1="184" y1="320" x2="128" y2="320" />
+  <text x="122" y="324" text-anchor="end" class="lbl-r">Elbow (R)</text>
+
+  <line class="leader" x1="148" y1="398" x2="128" y2="398" />
+  <text x="122" y="402" text-anchor="end" class="lbl-r">Wrist (R)</text>
+
+  <line class="leader" x1="129" y1="435" x2="112" y2="435" />
+  <text x="106" y="439" text-anchor="end" class="lbl-r">Fingertip (R)</text>
+
+  <polyline class="leader" points="260,412 215,476 128,476" />
+  <text x="122" y="480" text-anchor="end" class="lbl-r">Hip (R)</text>
+
+  <line class="leader" x1="256" y1="548" x2="128" y2="548" />
+  <text x="122" y="552" text-anchor="end" class="lbl-r">Knee (R)</text>
+
+  <polyline class="leader" points="254,666 210,646 128,646" />
+  <text x="122" y="650" text-anchor="end" class="lbl-r">Ankle (R)</text>
+
+  <polyline class="leader" points="244,680 205,676 128,676" />
+  <text x="122" y="680" text-anchor="end" class="lbl-r">Toes (R)</text>
+
+  <polyline class="leader" points="230,686 205,706 128,706" />
+  <text x="122" y="710" text-anchor="end" class="lbl-r">Toe tips (R)</text>
+
+  <!-- Right Column: Center & Character Left (Blue) -->
+  <line class="leader" x1="289" y1="132" x2="450" y2="132" />
+  <text x="456" y="136" class="lbl-c">Crown</text>
+
+  <line class="leader" x1="289" y1="166" x2="450" y2="166" />
+  <text x="456" y="170" class="lbl-c">Head</text>
+
+  <line class="leader" x1="289" y1="208" x2="450" y2="208" />
+  <text x="456" y="212" class="lbl-c">Neck</text>
+
+  <polyline class="leader" points="310,236 335,232 450,232" />
+  <text x="456" y="236" class="lbl-l">Collarbone (L)</text>
+
+  <polyline class="leader" points="346,248 370,256 450,256" />
+  <text x="456" y="260" class="lbl-l">Shoulder (L)</text>
+
+  <line class="leader" x1="394" y1="320" x2="450" y2="320" />
+  <text x="456" y="324" class="lbl-l">Elbow (L)</text>
+
+  <line class="leader" x1="430" y1="398" x2="450" y2="398" />
+  <text x="456" y="402" class="lbl-l">Wrist (L)</text>
+
+  <line class="leader" x1="449" y1="435" x2="462" y2="435" />
+  <text x="468" y="439" class="lbl-l">Fingertip (L)</text>
+
+  <polyline class="leader" points="318,412 365,476 450,476" />
+  <text x="456" y="480" class="lbl-l">Hip (L)</text>
+
+  <line class="leader" x1="322" y1="548" x2="450" y2="548" />
+  <text x="456" y="552" class="lbl-l">Knee (L)</text>
+
+  <polyline class="leader" points="324,666 368,646 450,646" />
+  <text x="456" y="650" class="lbl-l">Ankle (L)</text>
+
+  <polyline class="leader" points="334,680 372,676 450,676" />
+  <text x="456" y="680" class="lbl-l">Toes (L)</text>
+
+  <polyline class="leader" points="348,686 372,706 450,706" />
+  <text x="456" y="710" class="lbl-l">Toe tips (L)</text>
+
+  <!-- ==================== CENTER KEY PANEL ==================== -->
+  <text x="594" y="138" class="key-hdr">Center Axis (7)</text>
+  <g transform="translate(600, 158)">
+    <circle class="dot-c" cx="0" cy="0" r="5" /><text x="14" y="4" class="lbl-c">Crown</text>
+    <circle class="dot-c" cx="0" cy="24" r="5" /><text x="14" y="28" class="lbl-c">Head</text>
+    <circle class="dot-c" cx="0" cy="48" r="5" /><text x="14" y="52" class="lbl-c">Neck</text>
+    <circle class="dot-c" cx="0" cy="72" r="5" /><text x="14" y="76" class="lbl-c">Chest</text>
+    <circle class="dot-c" cx="0" cy="96" r="5" /><text x="14" y="100" class="lbl-c">Mid belly</text>
+    <circle class="dot-c" cx="0" cy="120" r="5" /><text x="14" y="124" class="lbl-c">Low belly</text>
+    <circle class="dot-c" cx="0" cy="144" r="5" /><text x="14" y="148" class="lbl-c">Hips</text>
+  </g>
+
+  <line x1="594" y1="326" x2="870" y2="326" stroke="#2d3340" stroke-width="1" />
+
+  <text x="594" y="352" class="key-hdr">Left Side (10)</text>
+  <text x="742" y="352" class="key-hdr">Right Side (10)</text>
+
+  <g transform="translate(600, 374)">
+    <circle class="dot-l" cx="0" cy="0" r="5" /><text x="14" y="4" class="lbl-l">Collarbone (L)</text>
+    <circle class="dot-l" cx="0" cy="26" r="5" /><text x="14" y="30" class="lbl-l">Shoulder (L)</text>
+    <circle class="dot-l" cx="0" cy="52" r="5" /><text x="14" y="56" class="lbl-l">Elbow (L)</text>
+    <circle class="dot-l" cx="0" cy="78" r="5" /><text x="14" y="82" class="lbl-l">Wrist (L)</text>
+    <circle class="dot-tip-l" cx="0" cy="104" r="5" /><text x="14" y="108" class="lbl-l">Fingertip (L)</text>
+    <circle class="dot-l" cx="0" cy="130" r="5" /><text x="14" y="134" class="lbl-l">Hip (L)</text>
+    <circle class="dot-l" cx="0" cy="156" r="5" /><text x="14" y="160" class="lbl-l">Knee (L)</text>
+    <circle class="dot-l" cx="0" cy="182" r="5" /><text x="14" y="186" class="lbl-l">Ankle (L)</text>
+    <circle class="dot-l" cx="0" cy="208" r="5" /><text x="14" y="212" class="lbl-l">Toes (L)</text>
+    <circle class="dot-tip-l" cx="0" cy="234" r="5" /><text x="14" y="238" class="lbl-l">Toe tips (L)</text>
+  </g>
+
+  <g transform="translate(748, 374)">
+    <circle class="dot-r" cx="0" cy="0" r="5" /><text x="14" y="4" class="lbl-r">Collarbone (R)</text>
+    <circle class="dot-r" cx="0" cy="26" r="5" /><text x="14" y="30" class="lbl-r">Shoulder (R)</text>
+    <circle class="dot-r" cx="0" cy="52" r="5" /><text x="14" y="56" class="lbl-r">Elbow (R)</text>
+    <circle class="dot-r" cx="0" cy="78" r="5" /><text x="14" y="82" class="lbl-r">Wrist (R)</text>
+    <circle class="dot-tip-r" cx="0" cy="104" r="5" /><text x="14" y="108" class="lbl-r">Fingertip (R)</text>
+    <circle class="dot-r" cx="0" cy="130" r="5" /><text x="14" y="134" class="lbl-r">Hip (R)</text>
+    <circle class="dot-r" cx="0" cy="156" r="5" /><text x="14" y="160" class="lbl-r">Knee (R)</text>
+    <circle class="dot-r" cx="0" cy="182" r="5" /><text x="14" y="186" class="lbl-r">Ankle (R)</text>
+    <circle class="dot-r" cx="0" cy="208" r="5" /><text x="14" y="212" class="lbl-r">Toes (R)</text>
+    <circle class="dot-tip-r" cx="0" cy="234" r="5" /><text x="14" y="238" class="lbl-r">Toe tips (R)</text>
+  </g>
+
+  <rect x="594" y="636" width="276" height="80" rx="6" fill="#14171d" stroke="#2d3340" />
+  <text x="606" y="656" class="lbl-s" font-weight="700">Placement Rules:</text>
+  <text x="606" y="674" class="subtitle">• Yellow dots stay inside volumetric center.</text>
+  <text x="606" y="691" class="subtitle">• Slight pre-bend at Elbows & Knees.</text>
+  <text x="606" y="708" class="subtitle">• Side View L & R dots overlap on depth.</text>
+
+  <!-- ==================== SIDE VIEW SILHOUETTE (Facing Left, Center X = 1083) ==================== -->
+  <g id="side-silhouette">
+    <!-- Profile Facing Left -->
+    <path class="sil" d="
+      M 1076 132
+      C 1054 132, 1046 150, 1046 164
+      L 1040 174
+      L 1046 178
+      L 1047 192
+      C 1052 198, 1062 198, 1066 196
+      L 1066 216
+      C 1050 226, 1044 252, 1048 282
+      C 1052 310, 1054 334, 1050 364
+      C 1046 392, 1048 424, 1056 468
+      L 1062 548
+      L 1066 666
+      L 1026 680
+      L 1026 688
+      L 1096 688
+      L 1094 662
+      L 1092 548
+      L 1104 442
+      C 1112 414, 1110 384, 1102 356
+      C 1098 330, 1104 294, 1106 262
+      C 1108 236, 1098 220, 1090 212
+      L 1090 194
+      C 1104 186, 1110 168, 1106 150
+      C 1102 136, 1090 132, 1076 132
+      Z" />
+    <!-- Side Arm Overlay -->
+    <path class="sil" d="
+      M 1076 238
+      C 1066 240, 1064 254, 1068 274
+      L 1076 322
+      L 1068 398
+      L 1064 438
+      L 1076 440
+      L 1082 400
+      L 1092 322
+      L 1088 260
+      C 1088 244, 1084 238, 1076 238
+      Z" />
+  </g>
+
+  <!-- Side View Skeleton Lines -->
+  <g class="bone">
+    <!-- Volumetric Spine -->
+    <polyline points="1076,132 1074,166 1077,208 1075,256 1076,312 1075,360 1077,404" />
+    <!-- Arm Chain (Slight backward elbow pre-bend) -->
+    <polyline points="1075,256 1068,238 1078,248 1084,320 1074,398 1070,435" />
+    <!-- Leg Chain (Slight forward knee pre-bend) -->
+    <polyline points="1077,404 1077,412 1074,548 1080,666 1048,680 1030,686" />
+  </g>
+
+  <!-- Side View Dots: Spine (7 Yellow) -->
+  <circle class="dot-c" cx="1076" cy="132" r="5" /><!-- Crown -->
+  <circle class="dot-c" cx="1074" cy="166" r="5" /><!-- Head -->
+  <circle class="dot-c" cx="1077" cy="208" r="5" /><!-- Neck -->
+  <circle class="dot-c" cx="1075" cy="256" r="5" /><!-- Chest -->
+  <circle class="dot-c" cx="1076" cy="312" r="5" /><!-- Mid belly -->
+  <circle class="dot-c" cx="1075" cy="360" r="5" /><!-- Low belly -->
+  <circle class="dot-c" cx="1077" cy="404" r="5" /><!-- Hips -->
+
+  <!-- Side View Dots: Overlapping L/R Limbs (10) -->
+  <circle class="dot-l" cx="1068" cy="238" r="5" /><!-- Collarbone (L/R) -->
+  <circle class="dot-l" cx="1078" cy="248" r="5" /><!-- Shoulder (L/R) -->
+  <circle class="dot-l" cx="1084" cy="320" r="5" /><!-- Elbow (L/R) -->
+  <circle class="dot-l" cx="1074" cy="398" r="5" /><!-- Wrist (L/R) -->
+  <circle class="dot-tip-l" cx="1070" cy="435" r="5" /><!-- Fingertip (L/R) -->
+  <circle class="dot-l" cx="1077" cy="414" r="5" /><!-- Hip (L/R) -->
+  <circle class="dot-l" cx="1074" cy="548" r="5" /><!-- Knee (L/R) -->
+  <circle class="dot-l" cx="1080" cy="666" r="5" /><!-- Ankle (L/R) -->
+  <circle class="dot-l" cx="1048" cy="680" r="5" /><!-- Toes (L/R) -->
+  <circle class="dot-tip-l" cx="1030" cy="686" r="5" /><!-- Toe tips (L/R) -->
+
+  <!-- Side View Labels: Spine on Left -->
+  <line class="leader" x1="1076" y1="132" x2="1014" y2="132" />
+  <text x="1008" y="136" text-anchor="end" class="lbl-c">Crown</text>
+
+  <line class="leader" x1="1074" y1="166" x2="1014" y2="166" />
+  <text x="1008" y="170" text-anchor="end" class="lbl-c">Head</text>
+
+  <line class="leader" x1="1077" y1="208" x2="1014" y2="208" />
+  <text x="1008" y="212" text-anchor="end" class="lbl-c">Neck</text>
+
+  <line class="leader" x1="1075" y1="256" x2="1014" y2="256" />
+  <text x="1008" y="260" text-anchor="end" class="lbl-c">Chest</text>
+
+  <line class="leader" x1="1076" y1="312" x2="1014" y2="312" />
+  <text x="1008" y="316" text-anchor="end" class="lbl-c">Mid belly</text>
+
+  <line class="leader" x1="1075" y1="360" x2="1014" y2="360" />
+  <text x="1008" y="364" text-anchor="end" class="lbl-c">Low belly</text>
+
+  <line class="leader" x1="1077" y1="404" x2="1014" y2="404" />
+  <text x="1008" y="408" text-anchor="end" class="lbl-c">Hips</text>
+
+  <polyline class="leader" points="1048,680 1036,650 1014,650" />
+  <text x="1008" y="654" text-anchor="end" class="lbl-s">Toes (L/R)</text>
+
+  <line class="leader" x1="1030" y1="686" x2="1014" y2="686" />
+  <text x="1008" y="690" text-anchor="end" class="lbl-s">Toe tips (L/R)</text>
+
+  <!-- Side View Labels: Limbs on Right -->
+  <polyline class="leader" points="1068,238 1118,228 1138,228" />
+  <text x="1144" y="232" class="lbl-s">Collarbone (L/R)</text>
+
+  <polyline class="leader" points="1078,248 1118,256 1138,256" />
+  <text x="1144" y="260" class="lbl-s">Shoulder (L/R)</text>
+
+  <line class="leader" x1="1084" y1="320" x2="1138" y2="320" />
+  <text x="1144" y="324" class="lbl-s">Elbow (L/R)</text>
+
+  <line class="leader" x1="1074" y1="398" x2="1138" y2="398" />
+  <text x="1144" y="402" class="lbl-s">Wrist (L/R)</text>
+
+  <line class="leader" x1="1070" y1="435" x2="1138" y2="435" />
+  <text x="1144" y="439" class="lbl-s">Fingertip (L/R)</text>
+
+  <polyline class="leader" points="1077,414 1118,472 1138,472" />
+  <text x="1144" y="476" class="lbl-s">Hip (L/R)</text>
+
+  <line class="leader" x1="1074" y1="548" x2="1138" y2="548" />
+  <text x="1144" y="552" class="lbl-s">Knee (L/R)</text>
+
+  <line class="leader" x1="1080" y1="666" x2="1138" y2="666" />
+  <text x="1144" y="670" class="lbl-s">Ankle (L/R)</text>
+</svg>
