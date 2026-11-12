@@ -4,7 +4,11 @@ The built app is bare bones next to the UI design demo
 (`characterstudio-ui-demo`). The demo is the target. This
 list is what is missing or different, step by step. Work
 it in order. Each item counts only when proven by running
-the app, not by reading the code.
+the app, not by reading the code. Verification is by the
+user: run the app, then ask the user for a clip or
+screenshot of the result. Do not use computer-use or
+screen recording to verify — the user is in front of the
+PC and sends the clips.
 
 What already matches — do not redo it: T-pose controls
 (method, prompt, Generate, upload); Mesh presets and seed

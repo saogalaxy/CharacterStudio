@@ -34,6 +34,6 @@ the job, in order:
 3. Rig before binding: plain mesh, no dots, no lines.
 4. Animations: the character playing, no dots, no lines.
 
-Record the run on video. If any of the four does not hold,
+Ask the user to send a clip of the run. If any of the four does not hold,
 state which one and what is on screen instead. Do not mark
 this done from reading the code.
