@@ -446,6 +446,10 @@ async function syncStage() {
   }
   shown = mode;
   stageBox.querySelectorAll("img.sheet").forEach((img) => img.remove());
+  if (mode === "empty") {
+    stage.clearModel();
+    return;
+  }
   if (mode.startsWith("image:")) {
     stage.clearModel();
     const img = document.createElement("img");

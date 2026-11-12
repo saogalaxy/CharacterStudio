@@ -101,6 +101,16 @@ export class Stage {
     this.mixer = null;
     this.actions = {};
     this.current = null;
+    this.clearOverlay();
+  }
+
+  clearOverlay() {
+    this._clearDots();
+    if (this.bones) {
+      this.scene.remove(this.bones);
+      this.bones = null;
+    }
+    this.envelopes.clear();
   }
 
   async loadMesh(url) {
@@ -173,6 +183,10 @@ export class Stage {
     this.offMarkers = offMarkers || [];
     this.unlocked = new Set(unlocked || []);
     this._clearDots();
+    if (this.bones) {
+      this.scene.remove(this.bones);
+      this.bones = null;
+    }
     for (const spec of LANDMARKS) {
       const src = this.joints[spec.joints[0]];
       if (!src) continue;
@@ -209,7 +223,11 @@ export class Stage {
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
-    this.bones = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0xffd27a }));
+    this.bones = new THREE.LineSegments(
+      geo,
+      new THREE.LineBasicMaterial({ color: 0xffd27a, depthTest: false, transparent: true, opacity: 0.95 }),
+    );
+    this.bones.renderOrder = 5;
     this.scene.add(this.bones);
     this._clearDots();
     for (const [name, value] of Object.entries(this.joints)) {
