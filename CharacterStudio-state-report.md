@@ -10,6 +10,12 @@ Observed 2026-11-12, commit `1e17143`, job `character_11e49d`
 six steps were clicked. Nothing was uploaded, generated, placed,
 dragged, bound, played, or exported in that pass.
 
+Updated the same day after the job on disk changed. A bind at 08:46
+wrote `rig/rigged_animated.glb` again (9,576,244 bytes). The user
+reports the character is animating. The walk still is a stride. The
+mild-crouch still is collapsed. That live playback was not watched
+in this check. The deformation gate on this bind is still `FAIL`.
+
 ## How to read a later change
 
 Replace the "Observed" line with the new commit and time. For each
@@ -22,18 +28,29 @@ run. If a bind log changes, replace the deformation table from
 Present: `job.json`, `markers.json`, `mesh.glb`, `mesh_check.json`,
 `surface.npy`, `logs/rig.txt`, `logs/markers.txt`, `logs/mesh_check.txt`.
 
-Absent: source image, T-pose image, `rig/` (no `rigged_animated.glb`),
-`animations.json`, export log.
+Also present after the 08:46 bind: `rig/rigged_animated.glb`,
+`rig/rigged.blend`, `rig/report.json`, `rig/joints.json`,
+`rig/poses/` (front stills for the built-in clips, plus walk side
+and farm-harvest side), `animations.json`, and
+`export/rigged_animated.glb` (the bind's own copy of the rig, not a
+separate Export .glb pack).
 
-Live API at the time of the check: one job. `skeleton_seen` true.
-`running` null. `can_run`: source yes, tpose no, mesh no, markers yes,
-skeleton yes, rig yes, animations no. `off_body` and `joints_off_body`
-empty. `animations` null. Motion library: 234 clips.
+Still absent: source image, T-pose image, export log, `export/pack.json`.
 
-`markers.json`: 8 markers, 28 joints, `fingers` is `five`. Joints
-match `joints_auto` (no dragged offset stored). `finger_tips` is
-still present for all ten digits and was not cleared by the reset.
-`envelopes` in the bind log is `{}` on every run.
+An earlier API read, before this bind, showed one job, `skeleton_seen`
+true, `running` null, and `can_run` with animations no because the
+rig file was gone. The files read after the 08:46 bind supersede
+that: `job.json` has `rig` done and `animations` done. `off_body`
+and `joints_off_body` were empty at that earlier read and were not
+rechecked after the head edit. Motion library: 234 clips.
+
+`markers.json`: 8 markers, 28 joints, `fingers` is `five`. The step
+message is now "head adjusted". Sixteen joints differ from
+`joints_auto`. The head itself moved about 0.001 in Z. Larger
+deltas are the clavicles and upper arms (about 0.049 in X and 0.025
+in Z), the spine and neck base (mostly in Y), and the calves (about
+0.03 in Z). `finger_tips` is still present for all ten digits.
+`envelopes` in the bind log is `{}` on every run, including this one.
 
 ## Per-step state
 
@@ -76,10 +93,10 @@ Mesh settings: preset `optimized`, 60,000 triangles, seed mode
 
 ### Markers
 
-Step state `done`, message "reset adjusted." Panel is "Place dots"
-and "Reset dots." No off-body banner. The stored joints match the
-automatic pose, so the file does not hold a dragged joint. Dots were
-not placed or dragged in this check.
+Step state `done`, message "head adjusted." Panel is "Place dots"
+and "Reset dots." No off-body banner. Sixteen joints now differ from
+the automatic pose, as listed under Job files. That drag was not
+watched in this check.
 
 ### Rig
 
@@ -95,26 +112,35 @@ Nothing in `app/static` references that file.
 
 Joint dots are drawn. The drag handler treats them as joints
 (`stage.js` kind `"joint"`, pointer-up posts the joints). A drag
-was not performed. A drag would save the joints and delete the rig
-(`put_markers` pose edit calls `clear_after("skeleton")`). The next
-bind reads those joints in `wear.py` `fit_bones`. That bind was not
-run. The rig folder is gone.
+saves the joints and deletes the previous rig (`put_markers` pose
+edit calls `clear_after("skeleton")`). The next bind reads those
+joints in `wear.py` `fit_bones`.
 
-Saved finger tips remain in `markers.json` from before the reset,
-separate from the joints.
+The 08:46 bind did that. `rig/` is back. Step state `rig` is `done`,
+message "deformation check FAIL", gate `FAIL`.
+`rig/report.json` records the same gate. The glb is
+`rig/rigged_animated.glb`, 9,576,244 bytes, which matches the last
+`STEP export` line in the log. Saved finger tips are still in
+`markers.json`.
 
-Server step state: `skeleton` is `done` ("skeleton on the mesh"),
-`rig` is `empty`.
+Server step state: `skeleton` is `done` ("skeleton on the mesh").
 
 ### Animations
 
-Panel says to bind on Rig before a motion can play. The library
-lists 234 clips, with search, a family menu, import, and + / − on
-the cards. "Export .glb" is disabled. No saved-motion row, no play
-dock, no fit card. No `animations.json`, no rig file. No clip was
-played and no fit slider was moved.
+Step state `done`, message "clips adjusted". `animations.json`
+exists. Selected clip is `walk`. All 12 built-ins are saved (idle,
+walk, mild crouch, wave, farm harvest, run, jump, sit, cheer, bow,
+clap, point), each at speed 1 and the default fit (hip 0, arms 1,
+legs 1, arm space 0, arms forward 0, turn 0, legs apart 0).
 
-Step state `empty`. `can_run.animations` is false.
+The user reports the character is animating. The baked walk still
+(`rig/poses/walk_front.png`, walk frame 9) is a stride: one leg
+forward, the other trailing, arms out of the T. That is one frame,
+not a watched playback. The mild-crouch still
+(`rig/poses/mild_crouch_front.png`, frame 20) is collapsed: the
+torso is folded and the head is oversized against the body. The
+live player was not watched in this check, and no fit slider was
+moved.
 
 ## Six buttons, seven server steps
 
@@ -133,30 +159,31 @@ two.
 
 ## Retarget, export, fit
 
-Retarget on Walk and a second motion was not played. There is no
-rig to play. In `stage.js`, `playClip` uses an action already in
-the loaded rig as stored. `_retargetClip` runs only for a library
-clip that is not already an action on that rig. Built-in clips are
-copied onto the rig at bind by `wear.py` `copy_clip` as local
-rotations. The only Walk evidence on disk is the bind log below,
-and every one of those checks failed.
+In `stage.js`, `playClip` uses an action already in the loaded rig
+as stored. `_retargetClip` runs only for a library clip that is not
+already an action on that rig. Built-in clips are copied onto the
+rig at bind by `wear.py` `copy_clip` as local rotations. Walk is
+one of those built-ins, so the playing walk is the baked clip, not
+the on-demand retarget. The walk still shows a stride. The
+mild-crouch still shows that pose broken. Whether the live mesh
+holds together through the whole clip was not watched.
 
-Export .glb was not run. The button is disabled. There is no rig,
-no saved clips, and no export log. `jobs.py` `export_package`
-refuses to run without a rig and at least one saved clip, then
-calls `pack.py`.
+Export .glb was not run. `export/rigged_animated.glb` is the copy
+the bind writes. There is no `pack.json` and no export log.
+`jobs.py` `export_package` is a separate pack of the saved clips
+through `pack.py`.
 
-Fit and playback are not on this character. Both are created only
-on Animations, and only after a rig exists (`ensureFit`,
-`mountTransport`). Fit is stored per clip in `animations.json`
-through `anim-settings`. Nothing is saved, and neither control was
-on screen.
+Fit is stored per clip in `animations.json` and is still the
+default on every saved clip. Playback is available because the rig
+exists and Walk is selected. The fit card and the transport dock
+were not reopened in this check.
 
 ## Deformation checks
 
-Source: `jobs/character_11e49d/logs/rig.txt`. Nineteen `STEP deform_qa`
-lines. No `PASS`. The rig those binds wrote is no longer on disk.
-These checks were not rerun.
+Source: `jobs/character_11e49d/logs/rig.txt`. Twenty `STEP deform_qa`
+lines. No `PASS`. Runs 1–19 are the earlier binds. Run 20 is the
+08:46 bind whose glb is the one on disk now. These checks were not
+rerun.
 
 The check is `deform_gate` in `app/pipeline/blender/wear.py`. It
 samples 4,489 edges. For each edge it divides the posed length by
@@ -205,11 +232,18 @@ vertex counts. Those weights are computed from the bone positions.
 | 17 | same measured result as run 16 | | | | | 121.2 | 1257.5 |
 | 18 | same measured result as run 16 | | | | | 121.2 | 1257.5 |
 | 19 | 80, 29.003× | 101, 23.888× | 104, 23.888× | 106, 25.637× | 124, 29.888× | 752.2 | 1257.5 |
+| 20 | 32, 9.979× | 44, 10.055× | 44, 10.055× | 50, 10.055× | 56, 16.5× | 773.6 | 1389.2 |
 
 Runs 7 and 8 match. Runs 16, 17, and 18 match. Those repeats saw
 the same deformation.
 
-Idle fails on all 19, from 29 tears to 85. Walk and Mild crouch are
+Run 20 is the current rig. Idle still has 32 tears at 9.979×.
+Walk's three frames are 44, 44, and 50 tears, all at 10.055×.
+Mild crouch is 56 tears at 16.5×. Finger weight is 773.6 and head
+weight is 1389.2, with `unweighted` 0 and `envelopes` `{}`. The
+same rule fails it. The glb was still written (`DONE FAIL`).
+
+Idle fails on all 20, from 29 tears to 85. Walk and Mild crouch are
 worse than Idle on the same run, but the mesh is already tearing on
 Idle. The last run is the clear weight change: finger weight goes
 from 121.2 to 752.2 while head weight stays 1257.5, and Walk goes
