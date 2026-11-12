@@ -97,6 +97,7 @@ async function upload(step, file) {
   } finally {
     posting = false;
     panelKey = "";
+    shown = "";
     render();
   }
 }
@@ -439,10 +440,10 @@ async function syncStage() {
   let mode = "empty";
   if (view === "source" && job.files.source) mode = "image:source.png";
   else if (view === "tpose" && job.files.tpose) mode = "image:tpose.png";
-  else if ((view === "markers" || view === "skeleton" || rigging) && job.files.mesh) mode = "mesh";
+  else if ((view === "markers" || view === "skeleton" || view === "mesh" || rigging) && job.files.mesh) mode = "mesh";
   else if ((view === "rig" || view === "animations") && job.files.rig) mode = view === "rig" ? "hold" : "play";
   if (mode === shown) {
-    if (mode === "mesh" && job.markers) paintMarkers();
+    if (mode === "mesh") paintMarkers();
     return;
   }
   shown = mode;
@@ -471,12 +472,17 @@ async function syncStage() {
 
 function paintMarkers() {
   const det = job.markers;
-  if (!det?.joints) return;
+  if (!det?.joints) {
+    stage.clearOverlay();
+    return;
+  }
   if (view === "skeleton") {
     stage.setBones(det.joints, det.height);
     stage.showEnvelopes(showEnv, det.envelopes || {});
   } else if (view === "markers") {
     stage.setDots(det.joints, det.height, det.joints_off_body || [], det.off_body || [], []);
+  } else {
+    stage.clearOverlay();
   }
 }
 
