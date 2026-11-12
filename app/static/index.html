@@ -1,45 +1,19 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<title>Character Studio</title>
-<link rel="stylesheet" href="/static/style.css?v=layout26">
-<script type="importmap">
-{ "imports": { "three": "/static/vendor/three/three.module.js",
-               "three/addons/": "/static/vendor/three/addons/" } }
-</script>
+  <meta charset="utf-8">
+  <title>Character Studio</title>
+  <link rel="stylesheet" href="/static/look.css?v=clean1">
+  <script type="importmap">
+  { "imports": { "three": "/static/vendor/three/three.module.js" } }
+  </script>
 </head>
 <body>
-<aside id="side">
-  <h1>Character Studio</h1>
-  <form id="newJob">
-    <input id="newName" placeholder="New character name" autocomplete="off">
-    <button type="submit">Create</button>
-  </form>
-  <div id="jobList"></div>
-  <div id="engine"></div>
-</aside>
-
-<main id="main">
-  <div id="empty" class="hint">Create a character, or pick one on the left.</div>
-  <section id="job" hidden>
-    <header id="jobHead">
-      <h2 id="jobName"></h2>
-      <div class="spacer"></div>
-      <button id="openFolder" class="ghost">Open folder</button>
-      <button id="deleteJob" class="ghost danger">Delete</button>
-    </header>
-    <nav id="steps"></nav>
-    <div id="status"></div>
-    <div id="panel">
-      <div id="view"></div>
-      <div id="side2"></div>
-    </div>
-  </section>
-</main>
-
-<dialog id="logDlg"><pre id="logText"></pre><form method="dialog"><button>Close</button></form></dialog>
-<input type="file" id="filePick" hidden>
-<script type="module" src="/static/app.js?v=layout26"></script>
+  <header id="bar"></header>
+  <main>
+    <section id="stage"></section>
+    <aside id="panel"></aside>
+  </main>
+  <script type="module" src="/static/studio.js?v=clean1"></script>
 </body>
 </html>
