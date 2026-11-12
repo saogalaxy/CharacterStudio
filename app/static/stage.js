@@ -143,6 +143,42 @@ export function visibleDots(joints) {
   return [...listed, ...extra];
 }
 
+function fingerChains(joints, fingers) {
+  const drop = fingers === "mitten" ? ["index", "middle", "ring", "pinky", "thumb"]
+    : fingers === "three" ? ["pinky", "ring"]
+    : fingers === "four" ? ["pinky"]
+    : [];
+  const digits = ["index", "middle", "ring", "pinky"].filter((name) => !drop.includes(name));
+  const pairs = [];
+  for (const side of ["l", "r"]) {
+    const hand = joints[`hand_${side}`];
+    const tip = joints[`hand_tip_${side}`];
+    if (!hand || !tip) continue;
+    const along = tip.map((value, i) => value - hand[i]);
+    const len = Math.hypot(...along) || 1;
+    const dir = along.map((value) => value / len);
+    let sx = dir[1];
+    let sy = -dir[0];
+    let sz = 0;
+    const span = Math.hypot(sx, sy, sz);
+    if (span < 1e-4) { sx = 1; sy = 0; sz = 0; }
+    else { sx /= span; sy /= span; }
+    const gap = len * 0.16;
+    const axis = [sx, sy, sz];
+    digits.forEach((name, index) => {
+      const spread = (index - (digits.length - 1) / 2) * gap;
+      const at = (t) => hand.map((value, i) => value + dir[i] * len * t + axis[i] * spread * (0.2 + 0.8 * t));
+      pairs.push([at(0.08), at(0.55)], [at(0.55), at(1)]);
+    });
+    if (!drop.includes("thumb")) {
+      const inward = -(Math.sign(hand[0]) || 1);
+      const thumb = (t) => hand.map((value, i) => value + dir[i] * len * (0.08 + 0.38 * t) + axis[i] * inward * gap * t + (i === 2 ? -len * 0.1 * t : 0));
+      pairs.push([thumb(0), thumb(1)]);
+    }
+  }
+  return pairs;
+}
+
 export { jointLabel };
 const LINKS = [
   ["pelvis", "spine_01"], ["spine_01", "spine_02"], ["spine_02", "spine_03"],
@@ -169,6 +205,7 @@ export class Stage {
     this.controls.enablePan = true;
     this.controls.enableRotate = true;
     this.controls.zoomToCursor = true;
+    this.controls.addEventListener("change", () => this._layoutLabels());
     this.loader = new GLTFLoader();
     this.clock = new THREE.Clock();
     this.mixer = null;
@@ -177,7 +214,7 @@ export class Stage {
     this.paused = false;
     this.timeScale = 1;
     this.hold = false;
-    this.fit = { hip: 0, arms: 1, legs: 1, arm_space: 0, arm_fwd: 0, turn: 0 };
+    this.fit = { hip: 0, arms: 1, legs: 1, arm_space: 0, arm_fwd: 0, turn: 0, leg_space: 0 };
     this.view = "front";
     this.mode = "mesh";
     this.H = 1;
@@ -185,7 +222,6 @@ export class Stage {
     this.dots = {};
     this.bones = null;
     this.unlocked = new Set();
-    this.showLabels = false;
     this.sym = true;
     this.labels = {};
     this.ray = new THREE.Raycaster();
@@ -197,6 +233,9 @@ export class Stage {
     this.scene.add(this.envelopes);
     this.light = new THREE.HemisphereLight(0xffffff, 0x223, 1.2);
     this.scene.add(this.light);
+    this.grid = new THREE.GridHelper(4, 16, 0x445066, 0x2a3140);
+    this.grid.visible = false;
+    this.scene.add(this.grid);
     this._bind = {};
     this._posed = {};
     this.root = null;
@@ -204,7 +243,7 @@ export class Stage {
     box.addEventListener("pointermove", (e) => this._move(e));
     window.addEventListener("pointerup", (e) => this._up(e));
     box.addEventListener("pointermove", (e) => this._hover(e));
-    box.addEventListener("pointerleave", () => { if (!this.drag) this._hideGrabLabel(); });
+    box.addEventListener("pointerleave", () => { if (!this.drag) this._beginHintFade(); });
     this._resize = () => this.resize();
     window.addEventListener("resize", this._resize);
     this.resize();
@@ -223,9 +262,14 @@ export class Stage {
   clearModel() {
     if (this.root) this.scene.remove(this.root);
     this.root = null;
+    this._pivot = null;
     this.mixer = null;
     this.actions = {};
     this.current = null;
+    this._bind = {};
+    this._posed = {};
+    this.mode = "empty";
+    if (this.grid) this.grid.visible = false;
     this.clearOverlay();
   }
 
@@ -245,6 +289,7 @@ export class Stage {
     this.root = gltf.scene;
     this.scene.add(this.root);
     this._frameObject(this.root);
+    this._placeGrid();
     this.mode = "mesh";
   }
 
@@ -253,7 +298,7 @@ export class Stage {
     const gltf = await this.loader.loadAsync(url);
     this.root = gltf.scene;
     this.scene.add(this.root);
-    this._frameObject(this.root);
+    this.frameCharacter();
     this.hold = !!hold;
     this.mixer = new THREE.AnimationMixer(this.root);
     this.actions = {};
@@ -264,6 +309,7 @@ export class Stage {
       this.actions[clip.name] = action;
     }
     this._cacheBind();
+    this._placeGrid();
     this.mode = hold ? "pose" : "play";
   }
 
@@ -289,7 +335,13 @@ export class Stage {
       this.actions[name] = action;
       key = name;
     }
-    if (key) this.play(key);
+    if (key) {
+      this.play(key);
+      this.mixer.update(0);
+      this._snapshot();
+      this._applyFit();
+      this.frameCharacter();
+    }
   }
 
   _retargetClip(clip, srcScene) {
@@ -357,6 +409,69 @@ export class Stage {
     clip.tracks = kept;
   }
 
+  _characterCenter() {
+    if (!this.root) return null;
+    this.root.updateMatrixWorld(true);
+    const box = new THREE.Box3();
+    const point = new THREE.Vector3();
+    let count = 0;
+    this.root.traverse((obj) => {
+      if (!obj.isBone) return;
+      obj.getWorldPosition(point);
+      if (!Number.isFinite(point.x) || !Number.isFinite(point.y) || !Number.isFinite(point.z)) return;
+      box.expandByPoint(point);
+      count += 1;
+    });
+    if (!count || box.isEmpty()) return null;
+    const size = box.getSize(new THREE.Vector3());
+    this.H = Math.max(size.y, 0.2);
+    return box.getCenter(new THREE.Vector3());
+  }
+
+  _placeGrid() {
+    if (!this.root || !this.grid) return;
+    this.root.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(this.root);
+    if (box.isEmpty()) return;
+    const size = box.getSize(new THREE.Vector3());
+    const span = Math.max(size.x, size.z, size.y, 0.5) * 4;
+    this.grid.scale.setScalar(span / 4);
+    this.grid.position.set(box.getCenter(new THREE.Vector3()).x, box.min.y, box.getCenter(new THREE.Vector3()).z);
+    this.grid.visible = true;
+  }
+
+  frameCharacter() {
+    const center = this._characterCenter();
+    if (!center) {
+      if (this.root) this._frameObject(this.root);
+      return;
+    }
+    this.center = center;
+    this._pivot = center.clone();
+    this.controls.target.copy(center);
+    if (this.view === "free") {
+      const dir = new THREE.Vector3();
+      this.camera.getWorldDirection(dir);
+      if (dir.lengthSq() < 1e-6) dir.set(0, 0, -1);
+      this.camera.position.copy(center).add(dir.normalize().multiplyScalar(-Math.max(this.H * 1.8, 0.4)));
+      this.camera.lookAt(center);
+      this.controls.update();
+      return;
+    }
+    this.setView(this.view);
+  }
+
+  _holdFrame() {
+    const center = this._characterCenter();
+    if (!center || !this._pivot) return;
+    const delta = center.clone().sub(this._pivot);
+    if (delta.lengthSq() < 1e-8) return;
+    this.controls.target.add(delta);
+    this.camera.position.add(delta);
+    this._pivot.copy(center);
+    this.center = center;
+  }
+
   _frameObject(obj) {
     const box = new THREE.Box3().setFromObject(obj);
     const size = box.getSize(new THREE.Vector3());
@@ -395,6 +510,15 @@ export class Stage {
   }
 
   setDots(joints, height, offJoints, offMarkers, unlocked) {
+    if (this.drag) return;
+    const stamp = JSON.stringify([joints, height, offJoints, offMarkers, unlocked]);
+    if (stamp === this._dotsStamp && Object.keys(this.dots).length) {
+      this.offJoints = offJoints || [];
+      this.offMarkers = offMarkers || [];
+      this._paintDots();
+      return;
+    }
+    this._dotsStamp = stamp;
     this.joints = JSON.parse(JSON.stringify(joints || {}));
     this.H = height || this.H;
     this.offJoints = offJoints || [];
@@ -420,25 +544,22 @@ export class Stage {
       mesh.renderOrder = 5;
       this.scene.add(mesh);
       this.dots[spec.id] = mesh;
-      const lab = document.createElement("div");
-      lab.className = "label";
-      lab.textContent = jointLabel(spec.id);
-      lab.hidden = true;
-      this.box.appendChild(lab);
-      this.labels[spec.id] = lab;
     }
     this._paintDots();
   }
 
-  setBones(joints, height) {
+  setBones(joints, height, fingers) {
     this.joints = JSON.parse(JSON.stringify(joints || {}));
     this.H = height || this.H;
+    if (fingers) this.fingers = fingers;
     if (this.bones) this.scene.remove(this.bones);
     const pos = [];
+    const add = (a, b) => pos.push(...toThree(a).toArray(), ...toThree(b).toArray());
     for (const [a, b] of LINKS) {
       if (!this.joints[a] || !this.joints[b]) continue;
-      pos.push(...toThree(this.joints[a]).toArray(), ...toThree(this.joints[b]).toArray());
+      add(this.joints[a], this.joints[b]);
     }
+    for (const [a, b] of fingerChains(this.joints, this.fingers || "five")) add(a, b);
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
     this.bones = new THREE.LineSegments(
@@ -498,38 +619,36 @@ export class Stage {
   dismissHint() {
     clearTimeout(this.hintTimer);
     this.hintTimer = null;
+    this.hintFading = false;
     this._hideGrabLabel();
   }
 
   _hover(ev) {
     if (this.drag) return;
     const hit = this._pick(ev);
-    if (hit && hit.userData.kind === "joint") {
+    if (hit) {
       this._showGrabLabel(hit.userData.id);
       return;
     }
-    if (this.showLabels) return;
-    for (const [id, lab] of Object.entries(this.labels)) lab.hidden = !hit || hit.userData.id !== id;
-    if (hit && this.labels[hit.userData.id]) this._placeLabel(hit.userData.id);
+    this._beginHintFade();
   }
 
-  setShowLabels(on) {
-    this.showLabels = !!on;
-    for (const id of Object.keys(this.labels)) {
-      this.labels[id].hidden = !this.showLabels;
-      if (this.showLabels) this._placeLabel(id);
-    }
+  _labelPoint(mesh) {
+    if (!mesh) return null;
+    this.camera.updateWorldMatrix(true, false);
+    const p = mesh.getWorldPosition(new THREE.Vector3()).project(this.camera);
+    if (![p.x, p.y, p.z].every(Number.isFinite) || p.z < -1 || p.z > 1) return null;
+    const canvas = this.renderer.domElement.getBoundingClientRect();
+    const host = this.box.getBoundingClientRect();
+    const x = (p.x * 0.5 + 0.5) * canvas.width + (canvas.left - host.left);
+    const y = (-p.y * 0.5 + 0.5) * canvas.height + (canvas.top - host.top);
+    if (x < 0 || y < 0 || x > host.width || y > host.height) return null;
+    if (y < 38 && x < 300) return null;
+    return { x, y };
   }
 
-  _placeLabel(id) {
-    const mesh = this.dots[id];
-    const lab = this.labels[id];
-    if (!mesh || !lab) return;
-    const p = mesh.position.clone().project(this.camera);
-    const w = this.box.clientWidth;
-    const h = this.box.clientHeight;
-    lab.style.left = `${(p.x * 0.5 + 0.5) * w}px`;
-    lab.style.top = `${(-p.y * 0.5 + 0.5) * h}px`;
+  _layoutLabels() {
+    if (this.grabLabel && !this.grabLabel.hidden) this._placeGrabLabel();
   }
 
   _pick(ev) {
@@ -555,7 +674,7 @@ export class Stage {
       this.onUnlocked && this.onUnlocked(spec.id);
     }
     this.drag = { id: hit.userData.id, kind: hit.userData.kind, last: hit.userData.blender.slice() };
-    if (this.drag.kind === "joint") this._showGrabLabel(this.drag.id);
+    this._showGrabLabel(this.drag.id);
     this._planeThrough(hit.position);
     ev.preventDefault();
   }
@@ -569,10 +688,7 @@ export class Stage {
   }
 
   _move(ev) {
-    if (!this.drag) {
-      if (this.showLabels) for (const id of Object.keys(this.labels)) this._placeLabel(id);
-      return;
-    }
+    if (!this.drag) return;
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.pointer.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
     this.pointer.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
@@ -588,7 +704,7 @@ export class Stage {
     if (this.drag.kind === "dot") this._shiftDot(this.drag.id, delta);
     else this._shiftJoint(this.drag.id, delta);
     if (this.sym) this._mirrorShift(this.drag.id, delta);
-    if (this.drag.kind === "joint") this._placeGrabLabel();
+    this._placeGrabLabel();
   }
 
   _shiftDot(id, delta) {
@@ -616,7 +732,7 @@ export class Stage {
       mesh.userData.blender = this.joints[name].slice();
       mesh.position.copy(toThree(this.joints[name]));
     }
-    this.setBones(this.joints, this.H);
+    this.setBones(this.joints, this.H, this.fingers);
   }
 
   _mirrorShift(id, delta) {
@@ -634,7 +750,7 @@ export class Stage {
     if (!this.drag) return;
     const moved = this.drag.id;
     this.drag = null;
-    this._armHintFade();
+    this._beginHintFade();
     this.onJoints && this.onJoints(this.joints, moved);
   }
 
@@ -645,42 +761,53 @@ export class Stage {
       this.box.appendChild(lab);
       this.grabLabel = lab;
     }
-    const changed = this.hintId !== id || this.grabLabel.hidden;
+    const changed = this.hintId !== id || this.grabLabel.hidden || this.hintFading;
+    clearTimeout(this.hintTimer);
+    this.hintTimer = null;
+    this.hintFading = false;
     this.grabLabel.hidden = false;
+    this.grabLabel.style.opacity = "1";
     if (changed) {
       this.grabLabel.replaceChildren();
+      const landmark = BY_ID[id];
       const name = document.createElement("b");
-      name.textContent = boneLabel(id);
-      name.style.color = dotColorCss(id);
-      const where = document.createElement("small");
-      where.textContent = bonePlace(id);
-      this.grabLabel.append(name, where);
-      this.grabLabel.style.opacity = "1";
-      this._armHintFade();
+      name.textContent = landmark ? jointLabel(id) : boneLabel(id);
+      name.style.color = landmark ? "#ffffff" : dotColorCss(id);
+      this.grabLabel.append(name);
+      if (!landmark) {
+        const where = document.createElement("small");
+        where.textContent = bonePlace(id);
+        this.grabLabel.append(where);
+      }
     }
     this.hintId = id;
     this._placeGrabLabel();
   }
 
-  _armHintFade() {
+  _beginHintFade() {
+    if (this.hintFading || !this.grabLabel || this.grabLabel.hidden) return;
+    this.hintFading = true;
     clearTimeout(this.hintTimer);
-    this.hintTimer = setTimeout(() => this._fadeHint(), 5000);
-  }
-
-  _fadeHint() {
-    this.hintTimer = null;
-    if (!this.grabLabel || this.grabLabel.hidden) return;
     this.grabLabel.style.opacity = "0";
-    this.hintTimer = setTimeout(() => this._hideGrabLabel(), 400);
+    this.hintTimer = setTimeout(() => {
+      this.hintTimer = null;
+      this.hintFading = false;
+      this._hideGrabLabel();
+    }, 400);
   }
 
   _placeGrabLabel() {
     const mesh = this.dots[this.hintId];
     const lab = this.grabLabel;
     if (!mesh || !lab || lab.hidden) return;
-    const p = mesh.position.clone().project(this.camera);
-    lab.style.left = `${(p.x * 0.5 + 0.5) * this.box.clientWidth}px`;
-    lab.style.top = `${(-p.y * 0.5 + 0.5) * this.box.clientHeight}px`;
+    const at = this._labelPoint(mesh);
+    if (!at) {
+      lab.hidden = true;
+      return;
+    }
+    lab.hidden = false;
+    lab.style.left = `${at.x}px`;
+    lab.style.top = `${at.y}px`;
   }
 
   _hideGrabLabel() {
@@ -708,6 +835,23 @@ export class Stage {
   pause() {
     this.paused = true;
     if (this.current) this.current.paused = true;
+  }
+
+  restart() {
+    if (!this.current) return;
+    this.current.reset().setEffectiveWeight(1).play();
+    this.current.time = 0;
+    this.paused = false;
+    this.current.paused = false;
+    this.mixer.update(0);
+    this._snapshot();
+    this._applyFit();
+  }
+
+  playback() {
+    const duration = this.current ? this.current.getClip().duration : 0;
+    const time = this.current ? this.current.time % (duration || 1) : 0;
+    return { time, duration, paused: this.paused || !this.current, speed: this.timeScale || 1 };
   }
 
   scrub(seconds) {
@@ -759,6 +903,9 @@ export class Stage {
         obj.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), THREE.MathUtils.degToRad(this.fit.turn)));
       }
       const side = obj.name.endsWith("_l") ? 1 : obj.name.endsWith("_r") ? -1 : 0;
+      if (obj.name.startsWith("thigh")) {
+        obj.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), THREE.MathUtils.degToRad((this.fit.leg_space || 0) * side)));
+      }
       if (obj.name.startsWith("upperarm")) {
         obj.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), THREE.MathUtils.degToRad(this.fit.arm_space * side)));
         obj.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), THREE.MathUtils.degToRad(this.fit.arm_fwd)));
@@ -766,15 +913,29 @@ export class Stage {
     });
   }
 
+  _restorePose() {
+    if (!this.root) return;
+    this.root.traverse((obj) => {
+      const pose = this._posed[obj.name];
+      if (!obj.isBone || !pose) return;
+      obj.quaternion.copy(pose.q);
+      obj.position.copy(pose.p);
+    });
+  }
+
   _frame() {
     requestAnimationFrame(() => this._frame());
     const dt = this.clock.getDelta();
     if (this.mixer && this.mode === "play" && !this.paused) {
+      this._restorePose();
       this.mixer.update(dt * (this.timeScale || 1));
       this._snapshot();
+      this._holdFrame();
     }
     if (this.mode === "play" || this.mode === "pose") this._applyFit();
+    if (this.onPlayback) this.onPlayback(this.playback());
     this.controls.update();
+    this._layoutLabels();
     this.renderer.render(this.scene, this.camera);
   }
 }

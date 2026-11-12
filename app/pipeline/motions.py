@@ -25,7 +25,10 @@ BUILTIN = (
 
 
 def default_fit():
-    return {"hip": 0.0, "arms": 1.0, "legs": 1.0, "arm_space": 0.0, "arm_fwd": 0.0, "turn": 0.0}
+    return {
+        "hip": 0.0, "arms": 1.0, "legs": 1.0,
+        "arm_space": 0.0, "arm_fwd": 0.0, "turn": 0.0, "leg_space": 0.0,
+    }
 
 
 def _clip(value, lo, hi, fallback):
@@ -48,6 +51,7 @@ def fit_from(payload):
     base["arm_space"] = _clip(payload.get("arm_space", 0), -120, 120, 0)
     base["arm_fwd"] = _clip(payload.get("arm_fwd", 0), -120, 120, 0)
     base["turn"] = _clip(payload.get("turn", 0), -45, 45, 0)
+    base["leg_space"] = _clip(payload.get("leg_space", 0), -80, 80, 0)
     return base
 
 

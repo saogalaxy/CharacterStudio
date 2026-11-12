@@ -82,6 +82,9 @@ async def job_upload(request):
             state = studio.put_image(job, step, raw)
         elif step == "mesh":
             state = studio.put_mesh(job, raw)
+        elif step == "motion":
+            name = request.headers.get("X-Filename") or "motion.glb"
+            state = studio.put_motion(job, name, raw)
         else:
             raise ValueError(f"you can't upload a {step}")
     except ValueError as exc:
@@ -133,6 +136,23 @@ async def apply_library(request):
     return web.json_response(state)
 
 
+async def remove_clip(request):
+    body = await request.json()
+    return web.json_response(studio.remove_clip(_job(request), body.get("clip") or ""))
+
+
+async def clear_clips(request):
+    return web.json_response(studio.clear_clips(_job(request)))
+
+
+async def export_package(request):
+    try:
+        state = studio.export_package(_job(request))
+    except RuntimeError as exc:
+        raise web.HTTPConflict(text=str(exc))
+    return web.json_response(state)
+
+
 async def job_file(request):
     job = _job(request)
     rel = request.match_info["name"]
@@ -165,6 +185,9 @@ def make_app():
     app.router.add_post("/api/jobs/{job}/skeleton/seen", see_skeleton)
     app.router.add_post("/api/jobs/{job}/anim-settings", anim_settings)
     app.router.add_post("/api/jobs/{job}/apply-library", apply_library)
+    app.router.add_post("/api/jobs/{job}/remove-clip", remove_clip)
+    app.router.add_post("/api/jobs/{job}/clear-clips", clear_clips)
+    app.router.add_post("/api/jobs/{job}/export", export_package)
     app.router.add_get("/api/jobs/{job}/file/{name:.*}", job_file)
     return app
 

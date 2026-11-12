@@ -461,6 +461,35 @@ class Studio:
         job.set_step("animations", state="done", message="clips adjusted", origin="edited")
         return job.state()
 
+    def put_motion(self, job, filename, raw: bytes):
+        stem = Path(filename or "motion").name
+        ext = Path(stem).suffix.lower()
+        if ext not in {".glb", ".gltf"}:
+            raise ValueError("import a .glb or .gltf motion")
+        if ext == ".glb" and raw[:4] != b"glTF":
+            raise ValueError("that file is not a glb motion")
+        if ext == ".gltf" and not raw.lstrip().startswith(b"{"):
+            raise ValueError("that file is not a gltf motion")
+        clip_id = motions.safe_id("import_" + Path(stem).stem)
+        folder = job.dir / "motions"
+        folder.mkdir(exist_ok=True)
+        rel = f"motions/{clip_id}{ext}"
+        (job.dir / rel).write_bytes(raw)
+        settings = motions.read_settings(job.dir)
+        settings.setdefault("clips", {})[clip_id] = {
+            "enabled": True,
+            "speed": 1,
+            "label": motions.label_of(Path(stem).stem),
+            "frame": 1,
+            "source": "import",
+            "file": rel,
+            "fit": motions.default_fit(),
+        }
+        settings["selected"] = clip_id
+        motions.write_settings(job.dir, settings)
+        job.set_step("animations", state="done", message="motion imported", origin="upload")
+        return job.state()
+
     def add_library_clip(self, job, clip_id):
         settings = motions.read_settings(job.dir)
         if clip_id not in settings["clips"]:
@@ -475,6 +504,75 @@ class Studio:
         motions.write_settings(job.dir, settings)
         job.set_step("animations", state="done", message=f"added {clip_id}", origin="edited")
         return job.state()
+
+    def remove_clip(self, job, clip_id):
+        settings = motions.read_settings(job.dir)
+        clips = settings.setdefault("clips", {})
+        row = clips.pop(str(clip_id), None)
+        self._drop_import(job, row)
+        motions.write_settings(job.dir, settings)
+        job.set_step("animations", state="done", message="motion removed", origin="edited")
+        return job.state()
+
+    def _drop_import(self, job, row):
+        if not row or row.get("source") != "import" or not row.get("file"):
+            return
+        path = (job.dir / row["file"]).resolve()
+        root = (job.dir / "motions").resolve()
+        if root in path.parents:
+            path.unlink(missing_ok=True)
+
+    def clear_clips(self, job):
+        settings = motions.read_settings(job.dir)
+        for row in (settings.get("clips") or {}).values():
+            self._drop_import(job, row)
+        settings["clips"] = {}
+        settings["selected"] = ""
+        motions.write_settings(job.dir, settings)
+        job.set_step("animations", state="done", message="saved motions cleared", origin="edited")
+        return job.state()
+
+    def _clip_file(self, job, clip_id, row):
+        if row.get("source") == "import" and row.get("file"):
+            path = job.dir / row["file"]
+            if path.is_file():
+                return path
+        builtin = next((clip for clip in motions.BUILTIN if clip["id"] == clip_id), None)
+        if builtin:
+            path = motions.LIBRARY / "animations" / builtin["file"]
+            if path.is_file():
+                return path
+        path = motions.LIBRARY / "animations" / f"{clip_id}.glb"
+        if path.is_file():
+            return path
+        return None
+
+    def export_package(self, job):
+        if not job.path("rig").is_file():
+            raise RuntimeError("bind the character before export")
+        settings = motions.read_settings(job.dir)
+        clips = settings.get("clips") or {}
+        if not clips:
+            raise RuntimeError("add a motion before export")
+        manifest = []
+        for clip_id, row in clips.items():
+            src = self._clip_file(job, clip_id, row)
+            manifest.append({"id": clip_id, "file": str(src) if src else ""})
+        export_dir = job.dir / "export"
+        export_dir.mkdir(exist_ok=True)
+        manifest_path = export_dir / "pack.json"
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        slug = "".join(ch.lower() if ch.isalnum() else "_" for ch in (job.meta.get("name") or "character")).strip("_") or "character"
+        out = export_dir / f"{slug}.glb"
+        log = job.dir / "logs" / "export.txt"
+        log.parent.mkdir(exist_ok=True)
+        code = rt.blender("pack.py", [str(job.path("rig")), str(manifest_path), str(out)], log, None, 3600)
+        if code != 0 or not out.is_file():
+            raise RuntimeError("export failed")
+        job.set_step("animations", state="done", message="export ready", origin="edited")
+        state = job.state()
+        state["download"] = f"export/{out.name}"
+        return state
 
 
 def _sync_markers(det):

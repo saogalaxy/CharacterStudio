@@ -1,4 +1,4 @@
-import { Stage, boneLabel, bonePlace, dotColorCss } from "./stage.js?v=af5";
+import { Stage, boneLabel, bonePlace, dotColorCss, visibleDots } from "./stage.js?v=af22";
 
 const STEPS = [
   ["source", "Source"],
@@ -19,16 +19,17 @@ let job = null;
 let view = "mesh";
 let stage = null;
 let library = [];
-let showLabels = false;
 let showFit = true;
 let showEnv = false;
 let query = "";
 let category = "all";
 let panelKey = "";
+let jobEpoch = 0;
 let shown = "";
 let seenSent = false;
 let posting = false;
 let showBones = true;
+let libraryScroll = 0;
 
 async function api(path, options) {
   const res = await fetch(path, options);
@@ -66,9 +67,12 @@ async function boot() {
 }
 
 async function poll() {
-  if (!job || posting) return;
+  if (!job || posting || stage?.drag) return;
+  const epoch = jobEpoch;
   const prev = job.running;
-  job = await api(`/api/jobs/${job.id}`);
+  const next = await api(`/api/jobs/${job.id}`);
+  if (epoch !== jobEpoch || posting || stage?.drag) return;
+  job = next;
   // The server drops skeleton_seen when markers change. Arm the
   // skeleton panel to post skeleton/seen again on its next draw.
   if (!job.skeleton_seen) seenSent = false;
@@ -78,6 +82,7 @@ async function poll() {
 
 async function postJSON(path, body) {
   posting = true;
+  jobEpoch += 1;
   try {
     job = await api(`/api/jobs/${job.id}/${path}`, {
       method: "POST",
@@ -95,12 +100,21 @@ async function postJSON(path, body) {
 async function upload(step, file) {
   posting = true;
   try {
-    job = await api(`/api/jobs/${job.id}/upload/${step}`, { method: "POST", body: file });
+    job = await api(`/api/jobs/${job.id}/upload/${step}`, {
+      method: "POST",
+      headers: { "X-Filename": file.name },
+      body: file,
+    });
+  } catch (err) {
+    window.alert(err.message || String(err));
   } finally {
     posting = false;
     panelKey = "";
     shown = "";
     render();
+  }
+  if (step === "motion" && job?.animations?.selected) {
+    await stage.playClip(job.animations.selected, motionUrl(job.animations.selected));
   }
 }
 
@@ -186,11 +200,11 @@ function render() {
     note.textContent = "No jobs. Use + New to start one.";
     panel.appendChild(note);
     if (stage) stage.clearModel();
-    stageBox.querySelector(".fit")?.remove();
+    clearStageChrome();
     return;
   }
-  if (view !== "animations") stageBox.querySelector(".fit")?.remove();
-  if (view !== "rig") stage.dismissHint();
+  if (view !== "animations") clearStageChrome();
+  if (view !== "rig" && view !== "markers") stage.dismissHint();
   bar.replaceChildren();
   STEPS.forEach(([id, label], index) => {
     const button = document.createElement("button");
@@ -211,12 +225,13 @@ function render() {
     };
     bar.appendChild(button);
   });
-  const key = [view, showBones, job.running, job.steps[view]?.message, job.skeleton_seen, job.animations?.selected, (job.off_body || []).join(), showLabels, showEnv].join("|");
+  const key = [view, showBones, job.running, job.steps[view]?.message, job.skeleton_seen, (job.off_body || []).join(), showEnv].join("|");
   if (key !== panelKey) {
     panelKey = key;
     drawPanel();
   }
   syncStage();
+  if (view === "animations") mountTransport();
 }
 
 function card(title) {
@@ -250,11 +265,15 @@ function fileButton(label, accept, step) {
 
 function drawPanel() {
   panel.replaceChildren();
-  const status = document.createElement("p");
-  status.className = "status";
   const statusId = view === "rig" && job.running !== "rig" ? "skeleton" : view;
-  status.textContent = job.steps[statusId]?.message || "";
-  panel.appendChild(status);
+  const message = job.steps[statusId]?.message || "";
+  const state = job.steps[statusId]?.state || "";
+  if (message && !(view === "animations" && state !== "running")) {
+    const status = document.createElement("p");
+    status.className = "status";
+    status.textContent = message;
+    panel.appendChild(status);
+  }
   if (view === "source") drawSource();
   if (view === "tpose") drawTpose();
   if (view === "mesh") drawMesh();
@@ -349,86 +368,11 @@ function drawMarkers() {
   const box = card("Dots");
   const help = document.createElement("p");
   help.className = "help";
-  help.textContent = "Orange dots drag. Grab a white dot and it turns orange. Labels stay off until you ask for them.";
+  help.textContent = "Orange dots drag. Grab a white dot and it turns orange. Hover a dot and its name follows it, then fades out.";
   box.appendChild(help);
-  const labels = document.createElement("label");
-  labels.className = "row";
-  const tick = document.createElement("input");
-  tick.type = "checkbox";
-  tick.checked = showLabels;
-  tick.onchange = () => { showLabels = tick.checked; stage.setShowLabels(showLabels); };
-  labels.append("Show labels", tick);
-  box.appendChild(labels);
   box.appendChild(button("Place dots", () => postJSON("run/markers", {}), true, !job.can_run.markers));
   box.appendChild(button("Reset dots", () => postJSON("markers", { reset: true, moved: "reset" }), false, !job.files.markers));
   panel.appendChild(box);
-}
-
-function guideDot(svg, x, y, name) {
-  const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-  dot.setAttribute("cx", x);
-  dot.setAttribute("cy", y);
-  dot.setAttribute("r", "3.2");
-  dot.setAttribute("fill", dotColorCss(name));
-  const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
-  title.textContent = boneLabel(name) + ". " + bonePlace(name);
-  dot.appendChild(title);
-  svg.appendChild(dot);
-}
-
-function guideBody(svg, d) {
-  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-  path.setAttribute("d", d);
-  path.setAttribute("fill", "#1a1f28");
-  path.setAttribute("stroke", "#3a4454");
-  path.setAttribute("stroke-width", "1.5");
-  svg.appendChild(path);
-}
-
-function placeGuide() {
-  const wrap = document.createElement("div");
-  wrap.className = "guide";
-  const front = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  front.setAttribute("viewBox", "0 0 160 220");
-  guideBody(front, "M80 8c10 0 16 8 16 16s-6 14-16 14-16-6-16-14 6-16 16-16zM64 40h32l8 28 22 8 18 36 8 28-10 4-8-24-14-8v22l8 46 4 28h-12l-2-26-8-44h-16l-8 44-2 26H52l4-28 8-46v-22l-14 8-8 24-10-4 8-28 18-36 22-8z");
-  const frontDots = [
-    [80, 10, "head_top"], [80, 24, "head"], [80, 42, "neck_base"],
-    [62, 50, "clavicle_l"], [98, 50, "clavicle_r"],
-    [44, 54, "upperarm_l"], [116, 54, "upperarm_r"],
-    [80, 64, "spine_03"],
-    [26, 86, "lowerarm_l"], [134, 86, "lowerarm_r"],
-    [80, 88, "spine_02"],
-    [16, 116, "hand_l"], [144, 116, "hand_r"],
-    [80, 108, "spine_01"],
-    [80, 124, "pelvis"],
-    [66, 128, "thigh_l"], [94, 128, "thigh_r"],
-    [12, 138, "hand_tip_l"], [148, 138, "hand_tip_r"],
-    [66, 168, "calf_l"], [94, 168, "calf_r"],
-    [66, 200, "foot_l"], [94, 200, "foot_r"],
-    [58, 212, "ball_l"], [102, 212, "ball_r"],
-    [50, 216, "toe_l"], [110, 216, "toe_r"],
-  ];
-  for (const [x, y, name] of frontDots) guideDot(front, x, y, name);
-  const side = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  side.setAttribute("viewBox", "0 0 120 220");
-  guideBody(side, "M52 8c12 0 20 8 22 16 4 2 8 8 6 14-6 4-16 4-24 0-6-6-8-14-4-20 0-6 0-10 0-10zM40 42h28l10 20 16 10 14 22 6 18-8 6-6-16-10-8-4 18 6 48 2 28h-10l-2-26-6-46H58l-4 46-2 26H42l2-28 6-48-6-16-12 8-6 16-8-6 8-20 16-12 10-18z");
-  const sideDots = [
-    [58, 12, "head_top"], [70, 26, "head"], [54, 42, "neck_base"],
-    [72, 50, "clavicle_l"], [48, 54, "upperarm_l"], [78, 66, "spine_03"],
-    [92, 82, "lowerarm_l"], [70, 90, "spine_02"], [104, 108, "hand_l"],
-    [66, 108, "spine_01"], [54, 124, "pelvis"], [48, 130, "thigh_l"],
-    [112, 126, "hand_tip_l"], [56, 170, "calf_l"], [52, 202, "foot_l"],
-    [70, 212, "ball_l"], [82, 216, "toe_l"],
-  ];
-  for (const [x, y, name] of sideDots) guideDot(side, x, y, name);
-  for (const [svg, caption] of [[front, "Front"], [side, "Side"]]) {
-    const fig = document.createElement("figure");
-    const cap = document.createElement("figcaption");
-    cap.textContent = caption;
-    fig.append(svg, cap);
-    wrap.appendChild(fig);
-  }
-  return wrap;
 }
 
 function drawRig() {
@@ -439,7 +383,7 @@ function drawRig() {
   const box = card("Rig");
   const help = document.createElement("p");
   help.className = "help";
-  help.textContent = "Hover a dot to see where it should sit on the body. Yellow is the middle, blue the left, red the right.";
+  help.textContent = "Hover a name to see where that dot should sit. Yellow is the middle, blue the left, red the right.";
   box.appendChild(help);
   const bones = document.createElement("label");
   bones.className = "row";
@@ -455,7 +399,20 @@ function drawRig() {
   };
   bones.append("Show skeleton", boneTick);
   box.appendChild(bones);
-  if (showBones && job.markers?.joints) box.appendChild(placeGuide());
+  if (showBones && job.markers?.joints) {
+    const list = document.createElement("div");
+    list.className = "dotlist";
+    for (const name of visibleDots(job.markers.joints)) {
+      const row = document.createElement("div");
+      row.className = "dotrow";
+      const swatch = document.createElement("span");
+      swatch.style.background = dotColorCss(name);
+      row.title = bonePlace(name);
+      row.append(swatch, boneLabel(name));
+      list.appendChild(row);
+    }
+    box.appendChild(list);
+  }
   const env = document.createElement("label");
   env.className = "row";
   const envTick = document.createElement("input");
@@ -503,10 +460,15 @@ function drawRig() {
 
 function drawAnimations() {
   const box = card("Motions");
+  if (!job.files.rig) {
+    const need = document.createElement("p");
+    need.className = "help";
+    need.textContent = "Bind the character on Rig before a motion can play. The mesh stays on screen until then.";
+    box.appendChild(need);
+  }
   const search = document.createElement("input");
   search.placeholder = "Search";
   search.value = query;
-  search.oninput = () => { query = search.value; panelKey = ""; drawPanel(); };
   box.appendChild(search);
   const families = ["all", ...new Set(library.map((clip) => clip.family))];
   const select = document.createElement("select");
@@ -517,59 +479,343 @@ function drawAnimations() {
     option.selected = category === name;
     select.appendChild(option);
   }
-  select.onchange = () => { category = select.value; panelKey = ""; drawPanel(); };
   box.appendChild(select);
+  box.appendChild(fileButton("Import a motion", ".glb,.gltf", "motion"));
+  drawSaved(box);
+  drawExport(box);
   const grid = document.createElement("div");
   grid.className = "library";
-  const add = document.createElement("div");
-  add.className = "clip";
-  add.appendChild(Object.assign(document.createElement("div"), { className: "tile", textContent: "+" }));
-  add.appendChild(Object.assign(document.createElement("span"), { textContent: "Upload a motion" }));
-  const input = document.createElement("input");
-  input.type = "file";
-  input.accept = ".glb,.gltf,.fbx";
-  input.hidden = true;
-  add.appendChild(input);
-  add.onclick = () => input.click();
-  grid.appendChild(add);
   const selected = job.animations?.selected;
-  for (const clip of library) {
-    if (category !== "all" && clip.family !== category) continue;
-    if (query && !clip.label.toLowerCase().includes(query.toLowerCase())) continue;
+  const imported = Object.entries(job.animations?.clips || {})
+    .filter(([, row]) => row.source === "import")
+    .map(([id, row]) => ({ id, label: row.label || id, family: "imported", preview: null }));
+  if (imported.length) {
+    const option = document.createElement("option");
+    option.value = "imported";
+    option.textContent = "imported";
+    option.selected = category === "imported";
+    select.appendChild(option);
+  }
+  for (const clip of [...imported, ...library]) {
     const tile = document.createElement("div");
     tile.className = "clip" + (selected === clip.id ? " on" : "");
+    tile.dataset.id = clip.id;
+    tile.dataset.family = clip.family || "";
+    tile.dataset.label = clip.label.toLowerCase();
     if (clip.preview) {
       const video = document.createElement("video");
-      video.src = clip.preview;
+      video.dataset.src = clip.preview;
       video.muted = true;
       video.loop = true;
-      video.autoplay = true;
       video.playsInline = true;
+      video.preload = "none";
       tile.appendChild(video);
     } else {
       tile.appendChild(Object.assign(document.createElement("div"), { className: "tile", textContent: clip.label.slice(0, 1) }));
     }
     tile.appendChild(Object.assign(document.createElement("span"), { textContent: clip.label }));
     tile.onclick = () => chooseClip(clip.id);
+    const ops = document.createElement("div");
+    ops.className = "ops";
+    const saved = !!job.animations?.clips?.[clip.id];
+    const plus = document.createElement("button");
+    plus.type = "button";
+    plus.textContent = "+";
+    plus.title = "Add this motion";
+    if (saved) plus.className = "on";
+    plus.onclick = (event) => {
+      event.stopPropagation();
+      addClip(clip.id);
+    };
+    const minus = document.createElement("button");
+    minus.type = "button";
+    minus.textContent = "−";
+    minus.title = "Remove this motion";
+    minus.onclick = (event) => {
+      event.stopPropagation();
+      removeClip(clip.id);
+    };
+    ops.append(plus, minus);
+    tile.appendChild(ops);
     grid.appendChild(tile);
   }
+  const applyFilter = () => {
+    const q = query.trim().toLowerCase();
+    for (const tile of grid.querySelectorAll(".clip[data-label]")) {
+      tile.hidden = (category !== "all" && tile.dataset.family !== category) || (q && !tile.dataset.label.includes(q));
+    }
+    pumpVideos();
+  };
+  const pumpVideos = () => {
+    const view = grid.getBoundingClientRect();
+    for (const tile of grid.querySelectorAll(".clip[data-label]")) {
+      const video = tile.querySelector("video");
+      if (!video) continue;
+      const rect = tile.getBoundingClientRect();
+      const onScreen = !tile.hidden && rect.bottom > view.top && rect.top < view.bottom;
+      if (!onScreen) {
+        if (!video.paused) video.pause();
+        continue;
+      }
+      if (!video.getAttribute("src")) video.setAttribute("src", video.dataset.src);
+      if (video.paused) video.play().catch(() => {});
+    }
+  };
+  search.oninput = () => { query = search.value; applyFilter(); };
+  select.onchange = () => { category = select.value; applyFilter(); };
+  grid.addEventListener("scroll", () => {
+    libraryScroll = grid.scrollTop;
+    pumpVideos();
+  });
   box.appendChild(grid);
   panel.appendChild(box);
-  if (showFit && job.animations?.clips?.[selected]) mountFit(job.animations.clips[selected].fit || {});
+  applyFilter();
+  grid.scrollTop = libraryScroll;
+  ensureFit();
+  mountTransport();
+}
+
+function downloadAnchor(label, href, filename) {
+  const link = document.createElement("a");
+  link.className = "export";
+  link.textContent = label;
+  if (!href) {
+    link.classList.add("off");
+    return link;
+  }
+  link.href = href;
+  link.download = filename;
+  return link;
+}
+
+function drawSaved(box) {
+  const head = document.createElement("div");
+  head.className = "saved-head";
+  const heading = document.createElement("h3");
+  heading.className = "sub";
+  heading.textContent = "Saved";
+  head.appendChild(heading);
+  const clips = Object.entries(job.animations?.clips || {});
+  if (clips.length) {
+    const clear = document.createElement("button");
+    clear.type = "button";
+    clear.textContent = "Clear all";
+    clear.onclick = () => {
+      if (window.confirm("Remove every saved motion?")) clearClips();
+    };
+    head.appendChild(clear);
+  }
+  box.appendChild(head);
+  if (!clips.length) {
+    const note = document.createElement("p");
+    note.className = "help";
+    note.textContent = "Nothing saved yet. Use + on a card to keep a motion.";
+    box.appendChild(note);
+    return;
+  }
+  const row = document.createElement("div");
+  row.className = "saved";
+  for (const [id, item] of clips) {
+    const itemBox = document.createElement("span");
+    itemBox.className = "saved-item";
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "name" + (id === job.animations?.selected ? " on" : "");
+    chip.dataset.id = id;
+    chip.textContent = item.label || id;
+    chip.onclick = () => chooseClip(id);
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "x";
+    remove.textContent = "×";
+    remove.title = "Remove";
+    remove.onclick = () => removeClip(id);
+    itemBox.append(chip, remove);
+    row.appendChild(itemBox);
+  }
+  box.appendChild(row);
+}
+
+function drawExport(box) {
+  const heading = document.createElement("h3");
+  heading.className = "sub";
+  heading.textContent = "Export";
+  box.appendChild(heading);
+  const note = document.createElement("p");
+  note.className = "help";
+  note.textContent = "One file with the character and every saved motion.";
+  box.appendChild(note);
+  const action = document.createElement("button");
+  action.type = "button";
+  action.className = "primary";
+  action.textContent = "Export .glb";
+  const count = Object.keys(job.animations?.clips || {}).length;
+  action.disabled = !job.files.rig || !count;
+  action.onclick = () => exportPackage(action);
+  box.appendChild(action);
 }
 
 function motionUrl(id) {
+  const row = job.animations?.clips?.[id];
+  if (row?.source === "import" && row.file) return fileUrl(row.file);
   return `/api/motion-library/${encodeURIComponent(id)}/file`;
 }
 
 async function chooseClip(id) {
-  const known = job.animations?.clips?.[id];
-  if (!known) await postJSON("apply-library", { clip: id });
-  else await postJSON("anim-settings", { selected: id });
-  await stage.playClip(id, motionUrl(id));
+  if (!job.animations) job.animations = { selected: id, clips: {} };
+  job.animations.selected = id;
+  for (const tile of panel.querySelectorAll(".clip[data-id]")) {
+    tile.classList.toggle("on", tile.dataset.id === id);
+  }
+  for (const chip of panel.querySelectorAll(".saved button.name")) {
+    chip.classList.toggle("on", chip.dataset.id === id);
+  }
+  ensureFit();
+  const playing = stage.playClip(id, motionUrl(id));
+  posting = true;
+  try {
+    job = await api(`/api/jobs/${job.id}/anim-settings`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ selected: id }),
+    });
+    if (job.animations) job.animations.selected = id;
+    panelKey = [view, showBones, job.running, job.steps[view]?.message, job.skeleton_seen, (job.off_body || []).join(), showEnv].join("|");
+  } catch (err) {
+    window.alert(err.message || String(err));
+  } finally {
+    posting = false;
+  }
+  await playing;
+}
+
+async function addClip(id) {
+  if (job.animations?.clips?.[id]) return;
+  await postJSON("apply-library", { clip: id });
+}
+
+async function removeClip(id) {
+  if (!job.animations?.clips?.[id]) return;
+  await postJSON("remove-clip", { clip: id });
+}
+
+async function clearClips() {
+  await postJSON("clear-clips", {});
+}
+
+async function exportPackage(button) {
+  button.disabled = true;
+  button.textContent = "Packaging…";
+  posting = true;
+  try {
+    const next = await api(`/api/jobs/${job.id}/export`, { method: "POST" });
+    job = next;
+    if (next.download) {
+      const name = next.download.split("/").pop();
+      const link = downloadAnchor(name, fileUrl(next.download), name);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }
+  } catch (err) {
+    window.alert(err.message || String(err));
+  } finally {
+    posting = false;
+    panelKey = "";
+    render();
+  }
+}
+
+function clearStageChrome() {
+  stageBox.querySelector(".fit")?.remove();
+  stageBox.querySelector(".fit-pill")?.remove();
+  stageBox.querySelector(".dock")?.remove();
+  if (stage) stage.onPlayback = null;
+}
+
+function ensureFit() {
+  const selected = job.animations?.selected;
+  if (view !== "animations" || !job.files.rig || !selected) {
+    stageBox.querySelector(".fit")?.remove();
+    stageBox.querySelector(".fit-pill")?.remove();
+    return;
+  }
+  mountFit(job.animations?.clips?.[selected]?.fit || {});
+}
+
+function mountTransport() {
+  if (view !== "animations" || !job?.files?.rig) {
+    stageBox.querySelector(".dock")?.remove();
+    if (stage) stage.onPlayback = null;
+    return;
+  }
+  if (stageBox.querySelector(".dock")) return;
+  const dock = document.createElement("div");
+  dock.className = "dock";
+  const play = document.createElement("button");
+  play.type = "button";
+  play.textContent = "Play";
+  play.onclick = () => {
+    if (!stage.current) return;
+    if (stage.paused) stage.play(stage.current.getClip().name);
+    else stage.pause();
+  };
+  const restart = document.createElement("button");
+  restart.type = "button";
+  restart.textContent = "Restart";
+  restart.onclick = () => stage.restart();
+  const scrub = document.createElement("input");
+  scrub.type = "range";
+  scrub.min = "0";
+  scrub.step = "0.01";
+  scrub.value = "0";
+  let scrubbing = false;
+  scrub.onpointerdown = () => { scrubbing = true; };
+  scrub.oninput = () => stage.scrub(Number(scrub.value));
+  scrub.onchange = () => { scrubbing = false; };
+  const speedLabel = document.createElement("span");
+  speedLabel.textContent = `${Number(stage.timeScale || 1).toFixed(1)}×`;
+  const speed = document.createElement("input");
+  speed.type = "range";
+  speed.className = "speed";
+  speed.min = "0.5";
+  speed.max = "2";
+  speed.step = "0.1";
+  speed.value = String(stage.timeScale || 1);
+  speed.title = "Play speed";
+  speed.oninput = () => {
+    stage.setSpeed(Number(speed.value));
+    speedLabel.textContent = `${Number(speed.value).toFixed(1)}×`;
+  };
+  dock.append(play, restart, scrub, speedLabel, speed);
+  stageBox.appendChild(dock);
+  stage.onPlayback = (state) => {
+    play.textContent = state.paused ? "Play" : "Pause";
+    play.disabled = !state.duration;
+    restart.disabled = !state.duration;
+    scrub.disabled = !state.duration;
+    scrub.max = String(state.duration || 0);
+    if (!scrubbing) scrub.value = String(state.time || 0);
+  };
 }
 
 function mountFit(fit) {
+  if (!showFit) {
+    stageBox.querySelector(".fit")?.remove();
+    if (!stageBox.querySelector(".fit-pill")) {
+      const pill = document.createElement("button");
+      pill.type = "button";
+      pill.className = "fit-pill";
+      pill.textContent = "Fit to character";
+      pill.onclick = () => {
+        showFit = true;
+        ensureFit();
+      };
+      stageBox.appendChild(pill);
+    }
+    return;
+  }
+  stageBox.querySelector(".fit-pill")?.remove();
   let overlay = stageBox.querySelector(".fit");
   if (!overlay) {
     overlay = document.createElement("div");
@@ -577,11 +823,17 @@ function mountFit(fit) {
     stageBox.appendChild(overlay);
   }
   overlay.replaceChildren();
+  const applied = {
+    hip: 0, arms: 1, legs: 1, arm_space: 0, arm_fwd: 0, turn: 0, leg_space: 0,
+    ...fit,
+  };
+  stage.setFit(applied);
   const fields = [
     ["arm_space", "Arm-Space", -120, 120, 1],
     ["arm_fwd", "Arms", -120, 120, 1],
     ["arms", "Overdrive", 0, 1.5, 0.05],
-    ["legs", "Stance", 0, 1.5, 0.05],
+    ["legs", "Stride", 0, 1.5, 0.05],
+    ["leg_space", "Legs apart", -60, 60, 1],
     ["hip", "Hip height", -0.12, 0.12, 0.005],
     ["turn", "Turn", -30, 30, 1],
   ];
@@ -594,31 +846,47 @@ function mountFit(fit) {
     slider.min = String(min);
     slider.max = String(max);
     slider.step = String(step);
-    slider.value = String(fit[key] ?? (key === "arms" || key === "legs" ? 1 : 0));
+    slider.dataset.fit = key;
+    slider.value = String(applied[key]);
     slider.oninput = () => stage.setFit({ [key]: Number(slider.value) });
-    slider.onchange = () => postJSON("anim-settings", {
-      selected: job.animations.selected,
-      clips: { [job.animations.selected]: { fit: { ...fit, [key]: Number(slider.value) } } },
-    });
+    slider.onchange = () => {
+      const id = job.animations?.selected;
+      if (!id || !job.animations?.clips?.[id]) return;
+      postJSON("anim-settings", {
+        selected: id,
+        clips: { [id]: { fit: { ...stage.fit } } },
+      });
+    };
     row.appendChild(slider);
     overlay.appendChild(row);
   }
-  overlay.appendChild(button("Reset fit", () => postJSON("anim-settings", {
-    selected: job.animations.selected,
-    clips: { [job.animations.selected]: { fit: { hip: 0, arms: 1, legs: 1, arm_space: 0, arm_fwd: 0, turn: 0 } } },
-  })));
-  overlay.appendChild(button(showFit ? "Hide fit" : "Show fit", () => { showFit = !showFit; overlay.hidden = !showFit; }));
+  overlay.appendChild(button("Reset fit", () => {
+    const defaults = { hip: 0, arms: 1, legs: 1, arm_space: 0, arm_fwd: 0, turn: 0, leg_space: 0 };
+    stage.setFit(defaults);
+    for (const slider of overlay.querySelectorAll("input[data-fit]")) {
+      slider.value = String(defaults[slider.dataset.fit]);
+    }
+    const id = job.animations?.selected;
+    if (!id || !job.animations?.clips?.[id]) return;
+    postJSON("anim-settings", {
+      selected: id,
+      clips: { [id]: { fit: defaults } },
+    });
+  }));
+  overlay.appendChild(button("Hide", () => {
+    showFit = false;
+    ensureFit();
+  }));
 }
 
 async function syncStage() {
   if (!stage || !job) return;
-  stage.setShowLabels(showLabels);
   const rigging = job.running === "rig" && !job.files.rig;
   let mode = "empty";
   if (view === "source" && job.files.source) mode = "image:source.png";
   else if (view === "tpose" && job.files.tpose) mode = "image:tpose.png";
   else if (view === "animations" && job.files.rig) mode = "play";
-  else if ((view === "markers" || view === "mesh" || view === "rig" || rigging) && job.files.mesh) mode = "mesh";
+  else if ((view === "markers" || view === "mesh" || view === "rig" || view === "animations" || rigging) && job.files.mesh) mode = "mesh";
   if (mode === shown) {
     if (mode === "mesh") paintMarkers();
     return;
@@ -657,7 +925,7 @@ function paintMarkers() {
     return;
   }
   if (view === "rig" && showBones && job.running !== "rig") {
-    stage.setBones(det.joints, det.height);
+    stage.setBones(det.joints, det.height, det.fingers || "five");
     stage.showEnvelopes(showEnv, det.envelopes || {});
   } else if (view === "markers" && det?.joints) {
     stage.setDots(det.joints, det.height, det.joints_off_body || [], det.off_body || [], []);
