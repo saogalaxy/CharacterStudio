@@ -1,8 +1,10 @@
 # CharacterStudio — UI alignment: built app vs UI design demo
 
 The built app is bare bones next to the UI design demo
-(`characterstudio-ui-demo`). The demo is the target. This
-list is what is missing or different, step by step. Work
+(`characterstudio-ui-demo`). The demo is the target —
+open it here to see the layout, not just this text:
+https://muse.ai/s/characterstudio-ui-demo-cp6cxb6rxkxsxb0/pvuuBMoxiIxKXkgETmL8RKPA0HwVF5REHWzdEycvsvw
+This list is what is missing or different, step by step. Work
 it in order. Each item counts only when proven by running
 the app, not by reading the code. Verification is by the
 user: run the app, then ask the user for a clip or
