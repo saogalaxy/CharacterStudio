@@ -6,6 +6,7 @@ A pose edit clears the skeleton check, the rig, and the animations.
 """
 import json
 import shutil
+import subprocess
 import threading
 import time
 import uuid
@@ -101,6 +102,11 @@ class Job:
             self._cloud = np.load(self.path("surface"))
         return self._cloud
 
+    def export_glb(self):
+        raw = self.meta.get("name") or "character"
+        slug = "".join(ch.lower() if ch.isalnum() else "_" for ch in raw).strip("_") or "character"
+        return self.dir / "export" / f"{slug}.glb"
+
     def markers(self):
         path = self.path("markers")
         if not path.is_file():
@@ -156,6 +162,8 @@ class Job:
             "skeleton_seen": seen,
             "animations": anim,
             "motion_library_count": len(motions.library_clips()),
+            "export_path": str(self.export_glb()),
+            "export_ready": self.export_glb().is_file(),
         }
 
 
@@ -234,14 +242,31 @@ class Studio:
         except Exception as exc:
             job.set_step(step, state="error", message=str(exc), finished=_now())
 
+    def _report_progress(self, job, step):
+        last = {"stage": None, "progress": None, "at": 0.0}
+
+        def report(stage, progress):
+            progress = round(float(progress), 3)
+            now = time.time()
+            same = stage == last["stage"] and last["progress"] is not None and abs(progress - last["progress"]) < 0.005
+            if same and now - last["at"] < 1:
+                return
+            last.update(stage=stage, progress=progress, at=now)
+            job.set_step(step, state="running", message=stage, progress=progress)
+
+        report("waiting on ComfyUI", 0)
+        return report
+
     def _tpose(self, job):
         settings = tpose.settings_from(job.meta.get("tpose_settings"))
+        report = self._report_progress(job, "tpose")
         image = desk.upload_image(job.path("source"))
         built = tpose.build_prompt(
             image, method=settings["method"], prompt=settings["prompt"],
             filename_prefix=f"studio_{job.meta['id']}_tpose",
         )
-        desk.queue(built["prompt"], built.get("client_id") or "character-studio", timeout=1800)
+        client = built.get("client_id") or f"character-studio-{uuid.uuid4().hex}"
+        desk.queue(built["prompt"], client, timeout=1800, on_progress=report)
         found = desk.newest(rt.COMFY / "output", f"studio_{job.meta['id']}_tpose*.png")
         if found is None:
             raise RuntimeError("T-pose image was not written")
@@ -254,13 +279,15 @@ class Studio:
         seed = mesh.resolve_seed(settings)
         settings["seed_used"] = seed
         job.meta["mesh_settings"] = settings
+        report = self._report_progress(job, "mesh")
         image = desk.upload_image(job.path("tpose"))
         prompt = mesh.build(image, target_tris=settings["target_tris"], seed=seed)
-        desk.queue(prompt, "character-studio", timeout=7200)
+        desk.queue(prompt, f"character-studio-{uuid.uuid4().hex}", timeout=7200, on_progress=report)
         found, _stage = mesh.pick_for_rig(rt.COMFY / "output")
         if found is None:
             raise RuntimeError("mesh was not written")
         shutil.copyfile(found, job.path("mesh"))
+        report("mesh check", 1)
         self._check_mesh(job)
         job.clear_after("mesh")
         job.set_step("mesh", state="running", message="mesh check passed")
@@ -574,8 +601,7 @@ class Studio:
         export_dir.mkdir(exist_ok=True)
         manifest_path = export_dir / "pack.json"
         manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-        slug = "".join(ch.lower() if ch.isalnum() else "_" for ch in (job.meta.get("name") or "character")).strip("_") or "character"
-        out = export_dir / f"{slug}.glb"
+        out = job.export_glb()
         log = job.dir / "logs" / "export.txt"
         log.parent.mkdir(exist_ok=True)
         code = rt.blender("pack.py", [str(job.path("rig")), str(manifest_path), str(out)], log, None, 3600)
@@ -585,6 +611,13 @@ class Studio:
         state = job.state()
         state["download"] = f"export/{out.name}"
         return state
+
+    def reveal_export(self, job):
+        path = job.export_glb()
+        if not path.is_file():
+            raise RuntimeError("export the character first")
+        subprocess.Popen(["explorer", f"/select,{path}"])
+        return job.state()
 
 
 def _sync_markers(det):

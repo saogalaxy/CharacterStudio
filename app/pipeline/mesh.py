@@ -99,23 +99,14 @@ def resolve_seed(settings):
     return DEFAULT_SEED
 
 
-def stage_progress(output_dir, elapsed_sec=None):
-    """(fill 0..1, label, stage_name) from stage GLBs, with a soft time ramp before them."""
-    best = (0.08, "building the shape", None)
+def stage_progress(output_dir):
+    """(fill 0..1, label, stage_name) from stage GLBs that have actually been written."""
+    best = (0.0, "waiting on ComfyUI", None)
     root = output_dir / "3d"
     if root.is_dir():
         for name, fill, label in STAGE_FILL:
             if any((root / name).glob("*.glb")):
                 best = (fill, label, name)
-    # Until the first saved stage lands, ease the fill up so the status scene isn't stuck.
-    if best[2] is None and elapsed_sec is not None:
-        try:
-            t = max(0.0, float(elapsed_sec))
-        except (TypeError, ValueError):
-            t = 0.0
-        soft = min(0.48, 0.08 + t / 1800.0)  # ~0.48 after 30 min of shape work
-        if soft > best[0]:
-            best = (soft, "building the shape", None)
     return best
 
 

@@ -1,4 +1,4 @@
-import { Stage, boneLabel, bonePlace, dotColorCss, poseLabel, visibleDots } from "./stage.js?v=af32";
+import { Stage, boneLabel, bonePlace, dotColorCss, poseLabel, visibleDots } from "./stage.js?v=af37";
 
 const STEPS = [
   ["source", "Source"],
@@ -484,8 +484,8 @@ function drawAnimations() {
   }
   box.appendChild(select);
   box.appendChild(fileButton("Import a motion", ".glb,.gltf", "motion"));
-  drawSaved(box);
   drawExport(box);
+  drawSaved(box);
   const grid = document.createElement("div");
   grid.className = "library";
   const selected = job.animations?.selected;
@@ -648,6 +648,10 @@ function drawExport(box) {
   note.className = "help";
   note.textContent = "One file with the character and every saved motion.";
   box.appendChild(note);
+  const where = document.createElement("p");
+  where.className = "path";
+  where.textContent = job.export_ready ? `Saved to ${job.export_path}` : `Saves to ${job.export_path}`;
+  box.appendChild(where);
   const action = document.createElement("button");
   action.type = "button";
   action.className = "primary";
@@ -656,6 +660,13 @@ function drawExport(box) {
   action.disabled = !job.files.rig || !count;
   action.onclick = () => exportPackage(action);
   box.appendChild(action);
+  if (job.export_ready) {
+    const show = document.createElement("button");
+    show.type = "button";
+    show.textContent = "Show in folder";
+    show.onclick = () => postJSON("export/reveal", {});
+    box.appendChild(show);
+  }
 }
 
 function motionUrl(id) {
@@ -938,8 +949,63 @@ function mountFit(fit) {
   }));
 }
 
+function generationWatch() {
+  if (job.running !== view || (view !== "tpose" && view !== "mesh")) return null;
+  const step = job.steps[view] || {};
+  const progress = Number(step.progress);
+  const image = view === "tpose"
+    ? (job.files.source ? "source.png" : "")
+    : (job.files.tpose ? "tpose.png" : "");
+  return {
+    image,
+    stage: step.message || "waiting on ComfyUI",
+    progress: Number.isFinite(progress) ? Math.min(1, Math.max(0, progress)) : 0,
+  };
+}
+
+function paintGeneration(status) {
+  let box = stageBox.querySelector(".gen-status");
+  if (!box || box.dataset.image !== status.image) {
+    stage.clearModel();
+    stageBox.querySelectorAll("img.sheet").forEach((img) => img.remove());
+    box?.remove();
+    box = document.createElement("div");
+    box.className = "gen-status";
+    box.dataset.image = status.image;
+    const frame = document.createElement("div");
+    frame.className = "silhouette";
+    if (status.image) {
+      const ghost = document.createElement("img");
+      ghost.className = "ghost";
+      ghost.alt = "";
+      ghost.src = fileUrl(status.image);
+      const solid = document.createElement("img");
+      solid.className = "solid";
+      solid.alt = "";
+      solid.src = ghost.src;
+      frame.append(ghost, solid);
+    }
+    const name = document.createElement("p");
+    name.className = "stage-name";
+    const bar = document.createElement("div");
+    bar.className = "bar";
+    bar.appendChild(document.createElement("i"));
+    box.append(frame, name, bar);
+    stageBox.appendChild(box);
+    shown = "status";
+  }
+  box.style.setProperty("--p", String(status.progress));
+  box.querySelector(".stage-name").textContent = status.stage;
+}
+
 async function syncStage() {
   if (!stage || !job) return;
+  const status = generationWatch();
+  if (status) {
+    paintGeneration(status);
+    return;
+  }
+  stageBox.querySelector(".gen-status")?.remove();
   const rigging = job.running === "rig" && !job.files.rig;
   let mode = "empty";
   if (view === "source" && job.files.source) mode = "image:source.png";

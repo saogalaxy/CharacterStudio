@@ -154,6 +154,14 @@ async def export_package(request):
     return web.json_response(state)
 
 
+async def reveal_export(request):
+    try:
+        state = studio.reveal_export(_job(request))
+    except RuntimeError as exc:
+        raise web.HTTPConflict(text=str(exc))
+    return web.json_response(state)
+
+
 async def job_file(request):
     job = _job(request)
     rel = request.match_info["name"]
@@ -189,6 +197,7 @@ def make_app():
     app.router.add_post("/api/jobs/{job}/remove-clip", remove_clip)
     app.router.add_post("/api/jobs/{job}/clear-clips", clear_clips)
     app.router.add_post("/api/jobs/{job}/export", export_package)
+    app.router.add_post("/api/jobs/{job}/export/reveal", reveal_export)
     app.router.add_get("/api/jobs/{job}/file/{name:.*}", job_file)
     return app
 
