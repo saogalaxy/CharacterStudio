@@ -43,8 +43,12 @@ on a VRM export is a later job.
 
 ## Order
 
-This builds on a working bind, so it runs after the bind
-calibration is proven.
+The user wants this job next, ahead of the bind calibration.
+Note: the bind is not yet proven (gate still FAIL, Walk close-up
+still fails), so jiggle will be verified on a mesh that still
+stretches — the stretch will show through the jiggle. Judge the
+jiggle itself (chains move, toggle works, nothing else moves),
+not the underlying bind.
 
 ## Verify by running
 
