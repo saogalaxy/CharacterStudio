@@ -1,4 +1,4 @@
-import { Stage, boneLabel, bonePlace, dotColorCss, poseLabel, visibleDots } from "./stage.js?v=af28";
+import { Stage, boneLabel, bonePlace, dotColorCss, poseLabel, visibleDots } from "./stage.js?v=af32";
 
 const STEPS = [
   ["source", "Source"],

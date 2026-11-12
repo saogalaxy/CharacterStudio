@@ -170,27 +170,26 @@ function fingerLayout(joints, fingers, saved) {
     const span = Math.hypot(sx, sy, sz);
     if (span < 1e-4) { sx = 1; sy = 0; sz = 0; }
     else { sx /= span; sy /= span; }
-    const axis = [-sx, -sy, -sz];
-    const gap = len * 0.2;
-    const addDigit = (name, index, count, endOf) => {
-      const spread = (index - (count - 1) / 2) * gap;
-      const knuckle = hand.map((value, i) => value + dir[i] * len * 0.22 + axis[i] * spread * 0.35);
+    let axis = [-sx, -sy, -sz];
+    if (axis[1] < 0) axis = axis.map((value) => -value);
+    const gap = len * 0.25;
+    const onDigit = (name, spread, along, drop) => {
       const id = `${name}_${side}`;
-      const end = saved && saved[id] ? saved[id].slice() : endOf(spread);
-      lines.push([knuckle, end]);
-      dots[id] = end;
+      if (saved && saved[id]) return saved[id].slice();
+      return hand.map((value, i) => value + dir[i] * len * along + axis[i] * spread + (i === 2 ? drop : 0));
     };
+    const alongDigit = (end, from) => hand.map((value, i) => value + (end[i] - hand[i]) * from);
     digits.forEach((name, index) => {
-      addDigit(name, index, digits.length, (spread) => hand.map((value, i) => value + dir[i] * len + axis[i] * spread));
+      const spread = (index - (digits.length - 1) / 2) * gap;
+      const id = `${name}_${side}`;
+      const end = onDigit(name, spread, 1.12, 0);
+      lines.push([alongDigit(end, 0.62), end]);
+      dots[id] = end;
     });
     if (keptFingers(fingers).includes("thumb")) {
-      const inward = -(Math.sign(hand[0]) || 1);
       const id = `thumb_${side}`;
-      const knuckle = hand.map((value, i) => value + dir[i] * len * 0.08);
-      const end = saved && saved[id]
-        ? saved[id].slice()
-        : hand.map((value, i) => value + dir[i] * len * 0.46 + axis[i] * inward * gap * 1.8 + (i === 2 ? -len * 0.12 : 0));
-      lines.push([knuckle, end]);
+      const end = onDigit("thumb", -gap * 2.0, 0.65, -len * 0.42);
+      lines.push([alongDigit(end, 0.45), end]);
       dots[id] = end;
     }
   }

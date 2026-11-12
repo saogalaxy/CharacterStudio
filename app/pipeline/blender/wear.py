@@ -147,7 +147,6 @@ def _aim_fingers(eb, joints, tips, fingers, snap, placed, height):
         if not hand or not palm:
             continue
         hand_v = Vector(hand)
-        palm_v = Vector(palm)
         for digit in ("index", "middle", "ring", "pinky", "thumb"):
             if any(f"{digit}_".startswith(prefix) for prefix in drop):
                 continue
@@ -157,8 +156,8 @@ def _aim_fingers(eb, joints, tips, fingers, snap, placed, height):
             names = [f"{digit}_0{i}_{side}" for i in (1, 2, 3)]
             if any(eb.get(name) is None for name in names):
                 continue
-            start = hand_v.lerp(palm_v, 0.35)
             end = Vector(tip)
+            start = hand_v.lerp(end, 0.62)
             for index, name in enumerate(names):
                 bone = eb[name]
                 head = start.lerp(end, index / 3)
