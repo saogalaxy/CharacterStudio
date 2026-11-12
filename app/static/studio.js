@@ -70,6 +70,7 @@ async function poll() {
   if (!job || posting) return;
   const prev = job.running;
   job = await api(`/api/jobs/${job.id}`);
+  if (!job.skeleton_seen) seenSent = false;
   if (prev === "rig" && job.running !== "rig" && job.files.rig) view = "rig";
   render();
 }
