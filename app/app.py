@@ -1,7 +1,11 @@
 """Character Studio window and job API. New file, not a patch of the old server."""
 import argparse
+import sys
 import threading
 from pathlib import Path
+
+# The portable runtime's path file does not add the script folder.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from aiohttp import web
 
