@@ -1,4 +1,4 @@
-import { Stage } from "./stage.js";
+import { Stage } from "./stage.js?v=skel3";
 
 const STEPS = [
   ["source", "Source"],
@@ -70,6 +70,8 @@ async function poll() {
   if (!job || posting) return;
   const prev = job.running;
   job = await api(`/api/jobs/${job.id}`);
+  // The server drops skeleton_seen when markers change. Arm the
+  // skeleton panel to post skeleton/seen again on its next draw.
   if (!job.skeleton_seen) seenSent = false;
   if (prev === "rig" && job.running !== "rig" && job.files.rig) view = "rig";
   render();
@@ -83,6 +85,7 @@ async function postJSON(path, body) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
+    if (!job.skeleton_seen) seenSent = false;
   } finally {
     posting = false;
     panelKey = "";
@@ -112,7 +115,7 @@ function render() {
     button.onclick = () => { view = id; panelKey = ""; shown = ""; render(); };
     bar.appendChild(button);
   }
-  const key = [view, job.running, job.steps[view]?.message, job.skeleton_seen, (job.off_body || []).join(), showLabels, showEnv].join("|");
+  const key = [view, job.running, job.steps[view]?.message, job.skeleton_seen, job.animations?.selected, (job.off_body || []).join(), showLabels, showEnv].join("|");
   if (key !== panelKey) {
     panelKey = key;
     drawPanel();
@@ -385,11 +388,15 @@ function drawAnimations() {
   if (showFit && job.animations?.clips?.[selected]) mountFit(job.animations.clips[selected].fit || {});
 }
 
+function motionUrl(id) {
+  return `/api/motion-library/${encodeURIComponent(id)}/file`;
+}
+
 async function chooseClip(id) {
   const known = job.animations?.clips?.[id];
   if (!known) await postJSON("apply-library", { clip: id });
   else await postJSON("anim-settings", { selected: id });
-  if (stage.actions[id]) stage.play(id);
+  await stage.playClip(id, motionUrl(id));
 }
 
 function mountFit(fit) {
@@ -437,10 +444,11 @@ async function syncStage() {
   if (!stage || !job) return;
   stage.setShowLabels(showLabels);
   const rigging = job.running === "rig" && !job.files.rig;
+  const plainMesh = view === "rig" && job.files.mesh && !job.files.rig;
   let mode = "empty";
   if (view === "source" && job.files.source) mode = "image:source.png";
   else if (view === "tpose" && job.files.tpose) mode = "image:tpose.png";
-  else if ((view === "markers" || view === "skeleton" || view === "mesh" || rigging) && job.files.mesh) mode = "mesh";
+  else if ((view === "markers" || view === "skeleton" || view === "mesh" || rigging || plainMesh) && job.files.mesh) mode = "mesh";
   else if ((view === "rig" || view === "animations") && job.files.rig) mode = view === "rig" ? "hold" : "play";
   if (mode === shown) {
     if (mode === "mesh") paintMarkers();
@@ -467,6 +475,9 @@ async function syncStage() {
   }
   if (mode === "hold" || mode === "play") {
     await stage.loadRig(fileUrl("rig/rigged_animated.glb"), mode === "hold");
+    if (mode === "play" && job.animations?.selected) {
+      await stage.playClip(job.animations.selected, motionUrl(job.animations.selected));
+    }
   }
 }
 
@@ -479,7 +490,7 @@ function paintMarkers() {
   if (view === "skeleton") {
     stage.setBones(det.joints, det.height);
     stage.showEnvelopes(showEnv, det.envelopes || {});
-  } else if (view === "markers") {
+  } else if (view === "markers" && det?.joints) {
     stage.setDots(det.joints, det.height, det.joints_off_body || [], det.off_body || [], []);
   } else {
     stage.clearOverlay();

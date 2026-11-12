@@ -139,10 +139,30 @@ export class Stage {
     }
     this._cacheBind();
     this.mode = hold ? "pose" : "play";
-    if (!hold) {
-      const name = this.actions.walk ? "walk" : Object.keys(this.actions)[0];
-      if (name) this.play(name);
+  }
+
+  actionName(name) {
+    if (this.actions[name]) return name;
+    const want = String(name || "").toLowerCase();
+    return Object.keys(this.actions).find((key) => key.toLowerCase() === want) || "";
+  }
+
+  async playClip(name, url) {
+    if (!this.mixer) return;
+    let key = this.actionName(name);
+    if (!key && url) {
+      const gltf = await this.loader.loadAsync(url);
+      const src = gltf.animations[0];
+      if (!src) return;
+      const clip = src.clone();
+      clip.name = name;
+      const action = this.mixer.clipAction(clip);
+      action.setLoop(THREE.LoopRepeat, Infinity);
+      action.clampWhenFinished = false;
+      this.actions[name] = action;
+      key = name;
     }
+    if (key) this.play(key);
   }
 
   _frameObject(obj) {

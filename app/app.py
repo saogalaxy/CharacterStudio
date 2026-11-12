@@ -32,6 +32,16 @@ async def library(_request):
     return web.json_response({"count": len(clips), "clips": clips})
 
 
+async def library_file(request):
+    clip = request.match_info["clip"]
+    if clip != motions.safe_id(clip):
+        raise web.HTTPBadRequest(text="unknown motion")
+    path = motions.LIBRARY / "animations" / f"{clip}.glb"
+    if not path.is_file():
+        raise web.HTTPNotFound(text="unknown motion")
+    return web.FileResponse(path)
+
+
 async def job_list(_request):
     return web.json_response({"jobs": [job.state() for job in studio.jobs.values()]})
 
@@ -132,6 +142,7 @@ def make_app():
     app.router.add_get("/", index)
     app.router.add_static("/static/", ROOT, show_index=False)
     app.router.add_get("/api/motion-library", library)
+    app.router.add_get("/api/motion-library/{clip}/file", library_file)
     app.router.add_get("/api/jobs", job_list)
     app.router.add_post("/api/jobs", job_create)
     app.router.add_get("/api/jobs/{job}", job_state)
