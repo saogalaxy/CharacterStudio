@@ -139,7 +139,48 @@ def keep_roll(bone, src_x):
     bone.roll = math.atan2(cross.dot(y), current.dot(hint))
 
 
-def fit_bones(arm, joints, height, zmin, fingers, snap):
+def _aim_fingers(eb, joints, tips, fingers, snap, placed, height):
+    drop = DROP.get(fingers, ())
+    for side in ("l", "r"):
+        hand = joints.get(f"hand_{side}")
+        palm = joints.get(f"hand_tip_{side}")
+        if not hand or not palm:
+            continue
+        hand_v = Vector(hand)
+        palm_v = Vector(palm)
+        for digit in ("index", "middle", "ring", "pinky", "thumb"):
+            if any(f"{digit}_".startswith(prefix) for prefix in drop):
+                continue
+            tip = (tips or {}).get(f"{digit}_{side}")
+            if not tip:
+                continue
+            names = [f"{digit}_0{i}_{side}" for i in (1, 2, 3)]
+            if any(eb.get(name) is None for name in names):
+                continue
+            start = hand_v.lerp(palm_v, 0.35)
+            end = Vector(tip)
+            for index, name in enumerate(names):
+                bone = eb[name]
+                head = start.lerp(end, index / 3)
+                tail = start.lerp(end, (index + 1) / 3)
+                if (tail - head).length < 1e-5:
+                    tail = head + Vector((0, 0.01 * height, 0))
+                bone.head, bone.tail = head, tail
+                if name in snap:
+                    keep_roll(bone, snap[name]["x"])
+                placed.append(name)
+            leaf = eb.get(f"{digit}_04_leaf_{side}")
+            parent = eb.get(names[-1])
+            if leaf is not None and parent is not None:
+                direction = parent.tail - parent.head
+                if direction.length < 1e-6:
+                    direction = Vector((0, 0.01 * height, 0))
+                leaf.head = parent.tail.copy()
+                leaf.tail = parent.tail + direction.normalized() * (0.01 * height)
+                placed.append(leaf.name)
+
+
+def fit_bones(arm, joints, height, zmin, fingers, snap, tips=None):
     bpy.context.view_layer.objects.active = arm
     bpy.ops.object.mode_set(mode="EDIT")
     eb = arm.data.edit_bones
@@ -166,6 +207,7 @@ def fit_bones(arm, joints, height, zmin, fingers, snap):
         bone.head, bone.tail = h, t
         keep_roll(bone, snap[name]["x"])
         placed.append(name)
+    _aim_fingers(eb, joints, tips, fingers, snap, placed, height)
 
     order = []
     seen = set()
@@ -426,7 +468,7 @@ def main():
     arm = load_armature(os.path.join(library, "skeleton.glb"))
     snap = template_snapshot(arm)
     fingers = det.get("fingers") or "five"
-    fit_bones(arm, joints, height, zmin, fingers, snap)
+    fit_bones(arm, joints, height, zmin, fingers, snap, det.get("finger_tips") or {})
     deform = sum(1 for b in arm.data.bones if b.use_deform)
     log("skeleton", {"bones": len(arm.data.bones), "source": "mesh2motion", "deform": deform, "fingers": fingers})
     body.parent = arm

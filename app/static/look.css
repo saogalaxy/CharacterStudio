@@ -46,7 +46,8 @@ button:disabled { opacity: 0.45; }
 .dock input[type="range"] { flex: 1; }
 .dock .speed { flex: 0 0 88px; }
 .dock span { color: var(--muted); font-size: 12px; min-width: 34px; }
-.fit { position: absolute; top: 48px; right: 10px; z-index: 4; width: 230px; background: rgba(18,20,26,.92); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+.fit, .rotate { position: absolute; top: 48px; right: 10px; z-index: 4; width: 230px; background: rgba(18,20,26,.92); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+.rotate .who { display: block; margin-bottom: 8px; }
 .fit-pill { position: absolute; top: 48px; right: 10px; z-index: 4; }
 .library { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; max-height: 420px; overflow: auto; }
 .clip { position: relative; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: #11141a; cursor: pointer; }

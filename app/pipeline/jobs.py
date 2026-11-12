@@ -363,7 +363,7 @@ class Studio:
         return job.state()
 
     def put_markers(self, job, markers=None, joints=None, reset=False, moved=None,
-                    envelopes=None, tags=None, fingers=None):
+                    envelopes=None, tags=None, fingers=None, finger_tips=None):
         det = json.loads(job.path("markers").read_text(encoding="utf-8"))
         cloud = job.cloud()
         if reset:
@@ -411,11 +411,23 @@ class Studio:
             if fingers not in ("five", "four", "three", "mitten"):
                 raise ValueError("fingers must be five, four, three, or mitten")
             det["fingers"] = fingers
+        if finger_tips is not None:
+            if not isinstance(finger_tips, dict):
+                raise ValueError("finger tips must be a map")
+            clean = {}
+            for key, value in finger_tips.items():
+                digit, _, side = str(key).partition("_")
+                if digit not in ("index", "middle", "ring", "pinky", "thumb") or side not in ("l", "r"):
+                    raise ValueError(f"unknown finger {key}")
+                if not isinstance(value, (list, tuple)) or len(value) != 3:
+                    raise ValueError(f"finger {key} needs three numbers")
+                clean[key] = [float(c) for c in value]
+            det["finger_tips"] = clean
         if cloud is not None:
             bad_m, bad_j = bodymath.listed_off(cloud, det)
             det["off_body"] = bad_m
             det["joints_off_body"] = bad_j
-        pose_edit = reset or markers is not None or joints is not None
+        pose_edit = reset or markers is not None or joints is not None or finger_tips is not None
         if pose_edit:
             job.meta["skeleton_seen"] = False
         if pose_edit or envelopes is not None or tags is not None or fingers is not None:

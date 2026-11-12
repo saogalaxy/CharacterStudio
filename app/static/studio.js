@@ -1,4 +1,4 @@
-import { Stage, boneLabel, bonePlace, dotColorCss, visibleDots } from "./stage.js?v=af22";
+import { Stage, boneLabel, bonePlace, dotColorCss, poseLabel, visibleDots } from "./stage.js?v=af28";
 
 const STEPS = [
   ["source", "Source"],
@@ -47,7 +47,8 @@ async function boot() {
   job = jobs[0] || null;
   library = (await api("/api/motion-library")).clips;
   stage = new Stage(stageBox);
-  stage.onJoints = (joints, moved) => postJSON("markers", { joints, moved });
+  stage.onJoints = (joints, moved) => postJSON("markers", { joints, finger_tips: stage.fingerTips, moved });
+  stage.onPick = () => { if (view === "rig") mountRotate(); };
   const views = document.createElement("div");
   views.className = "views";
   for (const name of ["front", "left", "right", "back", "free"]) {
@@ -232,6 +233,8 @@ function render() {
   }
   syncStage();
   if (view === "animations") mountTransport();
+  if (view === "rig" && showBones) mountRotate();
+  else stageBox.querySelector(".rotate")?.remove();
 }
 
 function card(title) {
@@ -383,7 +386,7 @@ function drawRig() {
   const box = card("Rig");
   const help = document.createElement("p");
   help.className = "help";
-  help.textContent = "Hover a name to see where that dot should sit. Yellow is the middle, blue the left, red the right.";
+  help.textContent = "Each finger has its own dot. Drag a dot to move it, or use Bend, Twist, and Swing to rotate that limb.";
   box.appendChild(help);
   const bones = document.createElement("label");
   bones.className = "row";
@@ -726,6 +729,62 @@ async function exportPackage(button) {
   }
 }
 
+function mountRotate() {
+  const id = stage.picked;
+  const known = id && (stage.joints?.[id] || stage.fingerTips?.[id]);
+  let box = stageBox.querySelector(".rotate");
+  if (!known) {
+    if (box) box.hidden = true;
+    return;
+  }
+  if (!box) {
+    box = document.createElement("div");
+    box.className = "rotate";
+    const who = document.createElement("b");
+    who.className = "who";
+    box.appendChild(who);
+    for (const [axis, label] of [["bend", "Bend"], ["twist", "Twist"], ["swing", "Swing"]]) {
+      const row = document.createElement("label");
+      row.className = "row";
+      row.append(label);
+      const slider = document.createElement("input");
+      slider.type = "range";
+      slider.min = "-90";
+      slider.max = "90";
+      slider.step = "1";
+      slider.value = "0";
+      slider.dataset.axis = axis;
+      slider.dataset.last = "0";
+      slider.oninput = () => {
+        const next = Number(slider.value);
+        const prev = Number(slider.dataset.last || 0);
+        stage.rotating = true;
+        stage.rotateSelection(axis, next - prev);
+        slider.dataset.last = String(next);
+      };
+      slider.onchange = () => {
+        slider.value = "0";
+        slider.dataset.last = "0";
+        stage.rotating = false;
+        postJSON("markers", { joints: stage.joints, finger_tips: stage.fingerTips, moved: stage.picked });
+      };
+      row.appendChild(slider);
+      box.appendChild(row);
+    }
+    stageBox.appendChild(box);
+  }
+  box.hidden = false;
+  const who = box.querySelector(".who");
+  const title = poseLabel(id);
+  if (who.textContent !== title) {
+    who.textContent = title;
+    for (const slider of box.querySelectorAll("input")) {
+      slider.value = "0";
+      slider.dataset.last = "0";
+    }
+  }
+}
+
 function clearStageChrome() {
   stageBox.querySelector(".fit")?.remove();
   stageBox.querySelector(".fit-pill")?.remove();
@@ -925,7 +984,7 @@ function paintMarkers() {
     return;
   }
   if (view === "rig" && showBones && job.running !== "rig") {
-    stage.setBones(det.joints, det.height, det.fingers || "five");
+    stage.setBones(det.joints, det.height, det.fingers || "five", det.finger_tips || null);
     stage.showEnvelopes(showEnv, det.envelopes || {});
   } else if (view === "markers" && det?.joints) {
     stage.setDots(det.joints, det.height, det.joints_off_body || [], det.off_body || [], []);

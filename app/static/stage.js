@@ -143,13 +143,20 @@ export function visibleDots(joints) {
   return [...listed, ...extra];
 }
 
-function fingerChains(joints, fingers) {
+const FINGER_WORD = { index: "Index", middle: "Middle", ring: "Ring", pinky: "Pinky", thumb: "Thumb" };
+
+function keptFingers(fingers) {
   const drop = fingers === "mitten" ? ["index", "middle", "ring", "pinky", "thumb"]
     : fingers === "three" ? ["pinky", "ring"]
     : fingers === "four" ? ["pinky"]
     : [];
-  const digits = ["index", "middle", "ring", "pinky"].filter((name) => !drop.includes(name));
-  const pairs = [];
+  return ["index", "middle", "ring", "pinky", "thumb"].filter((name) => !drop.includes(name));
+}
+
+function fingerLayout(joints, fingers, saved) {
+  const digits = keptFingers(fingers).filter((name) => name !== "thumb");
+  const lines = [];
+  const dots = {};
   for (const side of ["l", "r"]) {
     const hand = joints[`hand_${side}`];
     const tip = joints[`hand_tip_${side}`];
@@ -163,20 +170,102 @@ function fingerChains(joints, fingers) {
     const span = Math.hypot(sx, sy, sz);
     if (span < 1e-4) { sx = 1; sy = 0; sz = 0; }
     else { sx /= span; sy /= span; }
-    const gap = len * 0.16;
-    const axis = [sx, sy, sz];
+    const axis = [-sx, -sy, -sz];
+    const gap = len * 0.2;
+    const addDigit = (name, index, count, endOf) => {
+      const spread = (index - (count - 1) / 2) * gap;
+      const knuckle = hand.map((value, i) => value + dir[i] * len * 0.22 + axis[i] * spread * 0.35);
+      const id = `${name}_${side}`;
+      const end = saved && saved[id] ? saved[id].slice() : endOf(spread);
+      lines.push([knuckle, end]);
+      dots[id] = end;
+    };
     digits.forEach((name, index) => {
-      const spread = (index - (digits.length - 1) / 2) * gap;
-      const at = (t) => hand.map((value, i) => value + dir[i] * len * t + axis[i] * spread * (0.2 + 0.8 * t));
-      pairs.push([at(0.08), at(0.55)], [at(0.55), at(1)]);
+      addDigit(name, index, digits.length, (spread) => hand.map((value, i) => value + dir[i] * len + axis[i] * spread));
     });
-    if (!drop.includes("thumb")) {
+    if (keptFingers(fingers).includes("thumb")) {
       const inward = -(Math.sign(hand[0]) || 1);
-      const thumb = (t) => hand.map((value, i) => value + dir[i] * len * (0.08 + 0.38 * t) + axis[i] * inward * gap * t + (i === 2 ? -len * 0.1 * t : 0));
-      pairs.push([thumb(0), thumb(1)]);
+      const id = `thumb_${side}`;
+      const knuckle = hand.map((value, i) => value + dir[i] * len * 0.08);
+      const end = saved && saved[id]
+        ? saved[id].slice()
+        : hand.map((value, i) => value + dir[i] * len * 0.46 + axis[i] * inward * gap * 1.8 + (i === 2 ? -len * 0.12 : 0));
+      lines.push([knuckle, end]);
+      dots[id] = end;
     }
   }
-  return pairs;
+  return { lines, dots };
+}
+
+function mirrorId(name) {
+  if (name.endsWith("_l")) return name.slice(0, -1) + "r";
+  if (name.endsWith("_r")) return name.slice(0, -1) + "l";
+  return "";
+}
+
+function rotateAround(point, pivot, axis, rad) {
+  const c = Math.cos(rad);
+  const s = Math.sin(rad);
+  const v = point.map((value, i) => value - pivot[i]);
+  const dot = axis[0] * v[0] + axis[1] * v[1] + axis[2] * v[2];
+  const cross = [
+    axis[1] * v[2] - axis[2] * v[1],
+    axis[2] * v[0] - axis[0] * v[2],
+    axis[0] * v[1] - axis[1] * v[0],
+  ];
+  return pivot.map((value, i) => value + v[i] * c + cross[i] * s + axis[i] * dot * (1 - c));
+}
+
+function unit(v) {
+  const len = Math.hypot(...v) || 1;
+  return v.map((value) => value / len);
+}
+
+function cross(a, b) {
+  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+}
+
+const CHILD_OF = {};
+for (const [parent, child] of [
+  ["pelvis", "spine_01"], ["spine_01", "spine_02"], ["spine_02", "spine_03"],
+  ["spine_03", "neck_base"], ["neck_base", "head"], ["head", "head_top"],
+  ["neck_base", "clavicle_l"], ["clavicle_l", "upperarm_l"], ["upperarm_l", "lowerarm_l"], ["lowerarm_l", "hand_l"], ["hand_l", "hand_tip_l"],
+  ["neck_base", "clavicle_r"], ["clavicle_r", "upperarm_r"], ["upperarm_r", "lowerarm_r"], ["lowerarm_r", "hand_r"], ["hand_r", "hand_tip_r"],
+  ["pelvis", "thigh_l"], ["thigh_l", "calf_l"], ["calf_l", "foot_l"], ["foot_l", "ball_l"], ["ball_l", "toe_l"],
+  ["pelvis", "thigh_r"], ["thigh_r", "calf_r"], ["calf_r", "foot_r"], ["foot_r", "ball_r"], ["ball_r", "toe_r"],
+]) {
+  (CHILD_OF[parent] ||= []).push(child);
+}
+
+function descendants(name) {
+  const out = [];
+  const walk = (id) => {
+    for (const child of CHILD_OF[id] || []) {
+      out.push(child);
+      walk(child);
+    }
+  };
+  walk(name);
+  return out;
+}
+
+function limbAxis(joints, name, kind) {
+  const child = (CHILD_OF[name] || []).map((id) => joints[id]).find(Boolean);
+  const origin = joints[name];
+  const dir = origin && child ? unit(child.map((value, i) => value - origin[i])) : [0, 1, 0];
+  let bend = cross(dir, [0, 0, 1]);
+  if (Math.hypot(...bend) < 1e-4) bend = cross(dir, [0, 1, 0]);
+  bend = unit(bend);
+  const swing = unit(cross(bend, dir));
+  if (kind === "twist") return dir;
+  if (kind === "swing") return swing;
+  return bend;
+}
+
+export function poseLabel(name) {
+  const word = FINGER_WORD[name.split("_")[0]];
+  if (word) return word + (name.endsWith("_l") ? " (L)" : name.endsWith("_r") ? " (R)" : "");
+  return boneLabel(name);
 }
 
 export { jointLabel };
@@ -223,6 +312,9 @@ export class Stage {
     this.bones = null;
     this.unlocked = new Set();
     this.sym = true;
+    this.fingerTips = null;
+    this.picked = null;
+    this.rotating = false;
     this.labels = {};
     this.ray = new THREE.Raycaster();
     this.pointer = new THREE.Vector2();
@@ -280,6 +372,8 @@ export class Stage {
       this.bones = null;
     }
     this.envelopes.clear();
+    this.fingerTips = null;
+    this.picked = null;
     this._hideGrabLabel();
   }
 
@@ -548,18 +642,22 @@ export class Stage {
     this._paintDots();
   }
 
-  setBones(joints, height, fingers) {
+  setBones(joints, height, fingers, tips, live) {
+    if ((this.drag || this.rotating) && !live) return;
     this.joints = JSON.parse(JSON.stringify(joints || {}));
     this.H = height || this.H;
     if (fingers) this.fingers = fingers;
+    if (tips && !live) this.fingerTips = JSON.parse(JSON.stringify(tips));
     if (this.bones) this.scene.remove(this.bones);
+    const fingersDrawn = fingerLayout(this.joints, this.fingers || "five", this.fingerTips);
+    this.fingerTips = fingersDrawn.dots;
     const pos = [];
     const add = (a, b) => pos.push(...toThree(a).toArray(), ...toThree(b).toArray());
     for (const [a, b] of LINKS) {
       if (!this.joints[a] || !this.joints[b]) continue;
       add(this.joints[a], this.joints[b]);
     }
-    for (const [a, b] of fingerChains(this.joints, this.fingers || "five")) add(a, b);
+    for (const [a, b] of fingersDrawn.lines) add(a, b);
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
     this.bones = new THREE.LineSegments(
@@ -582,6 +680,20 @@ export class Stage {
       this.scene.add(mesh);
       this.dots[name] = mesh;
     }
+    for (const [id, at] of Object.entries(this.fingerTips || {})) {
+      const mesh = new THREE.Mesh(
+        new THREE.SphereGeometry(this.H * 0.011, 12, 10),
+        new THREE.MeshBasicMaterial({ color: dotColor(id), depthTest: false }),
+      );
+      mesh.position.copy(toThree(at));
+      mesh.userData = { kind: "finger", id, blender: at.slice() };
+      mesh.renderOrder = 7;
+      if (id === this.picked) mesh.scale.setScalar(1.6);
+      this.scene.add(mesh);
+      this.dots[id] = mesh;
+    }
+    const picked = this.dots[this.picked];
+    if (picked && picked.userData.kind === "joint") picked.scale.setScalar(1.45);
   }
 
   showEnvelopes(on, scales) {
@@ -674,6 +786,8 @@ export class Stage {
       this.onUnlocked && this.onUnlocked(spec.id);
     }
     this.drag = { id: hit.userData.id, kind: hit.userData.kind, last: hit.userData.blender.slice() };
+    this.picked = this.drag.id;
+    this.onPick && this.onPick(this.picked);
     this._showGrabLabel(this.drag.id);
     this._planeThrough(hit.position);
     ev.preventDefault();
@@ -702,6 +816,7 @@ export class Stage {
     if (this.view === "left" || this.view === "right") delta[0] = 0;
     this.drag.last = prev.map((c, i) => c + delta[i]);
     if (this.drag.kind === "dot") this._shiftDot(this.drag.id, delta);
+    else if (this.drag.kind === "finger") this._shiftFinger(this.drag.id, delta);
     else this._shiftJoint(this.drag.id, delta);
     if (this.sym) this._mirrorShift(this.drag.id, delta);
     this._placeGrabLabel();
@@ -732,7 +847,75 @@ export class Stage {
       mesh.userData.blender = this.joints[name].slice();
       mesh.position.copy(toThree(this.joints[name]));
     }
-    this.setBones(this.joints, this.H, this.fingers);
+    this.setBones(this.joints, this.H, this.fingers, null, true);
+  }
+
+  _shiftFinger(id, delta) {
+    if (!this.fingerTips?.[id]) return;
+    this.fingerTips[id] = this.fingerTips[id].map((value, i) => value + delta[i]);
+    this.setBones(this.joints, this.H, this.fingers, null, true);
+  }
+
+  rotateSelection(axis, deltaDeg) {
+    if (!this.picked || !deltaDeg) return;
+    if (this.fingerTips?.[this.picked]) this._spinFinger(this.picked, axis, deltaDeg);
+    else this._spinLimb(this.picked, axis, deltaDeg);
+    this.setBones(this.joints, this.H, this.fingers, null, true);
+  }
+
+  _spinLimb(name, axis, deg) {
+    const pivot = this.joints[name];
+    if (!pivot) return;
+    const ids = descendants(name);
+    const side = name.endsWith("_l") ? "l" : name.endsWith("_r") ? "r" : "";
+    const tips = [];
+    if (side && (name === `hand_${side}` || ids.includes(`hand_${side}`))) {
+      for (const key of Object.keys(this.fingerTips || {})) {
+        if (key.endsWith(`_${side}`)) tips.push(key);
+      }
+    }
+    const rad = deg * Math.PI / 180;
+    const ax = limbAxis(this.joints, name, axis);
+    for (const id of ids) {
+      if (this.joints[id]) this.joints[id] = rotateAround(this.joints[id], pivot, ax, rad);
+    }
+    for (const id of tips) {
+      if (this.fingerTips[id]) this.fingerTips[id] = rotateAround(this.fingerTips[id], pivot, ax, rad);
+    }
+    this._mirrorSpin(name, ids, tips);
+  }
+
+  _spinFinger(id, axis, deg) {
+    const side = id.endsWith("_l") ? "l" : "r";
+    const pivotName = `hand_${side}`;
+    const pivot = this.joints[pivotName];
+    const tip = this.fingerTips[id];
+    if (!pivot || !tip) return;
+    const dir = unit(tip.map((value, i) => value - pivot[i]));
+    let bend = cross(dir, [0, 0, 1]);
+    if (Math.hypot(...bend) < 1e-4) bend = cross(dir, [0, 1, 0]);
+    bend = unit(bend);
+    const swing = unit(cross(bend, dir));
+    const ax = axis === "twist" ? dir : axis === "swing" ? swing : bend;
+    this.fingerTips[id] = rotateAround(tip, pivot, ax, deg * Math.PI / 180);
+    this._mirrorSpin(pivotName, [], [id]);
+  }
+
+  _mirrorSpin(pivotName, ids, tips) {
+    if (!this.sym) return;
+    const other = mirrorId(pivotName);
+    const pivot = this.joints[pivotName];
+    const opivot = other && this.joints[other];
+    if (!pivot || !opivot) return;
+    const copy = (id, book) => {
+      const mirrored = mirrorId(id);
+      if (!mirrored || !book[id] || !book[mirrored]) return;
+      const delta = book[id].map((value, i) => value - pivot[i]);
+      delta[0] = -delta[0];
+      book[mirrored] = opivot.map((value, i) => value + delta[i]);
+    };
+    for (const id of ids) copy(id, this.joints);
+    for (const id of tips) copy(id, this.fingerTips);
   }
 
   _mirrorShift(id, delta) {
@@ -742,6 +925,7 @@ export class Stage {
       const other = id.slice(0, -1) + (id.endsWith("_l") ? "r" : "l");
       if (this.drag.kind === "dot" && BY_ID[other]) this._shiftDot(other, flip);
       if (this.drag.kind === "joint" && this.joints[other]) this._shiftJoint(other, flip);
+      if (this.drag.kind === "finger" && this.fingerTips?.[other]) this._shiftFinger(other, flip);
     }
   }
 
@@ -770,11 +954,12 @@ export class Stage {
     if (changed) {
       this.grabLabel.replaceChildren();
       const landmark = BY_ID[id];
+      const finger = FINGER_WORD[id.split("_")[0]];
       const name = document.createElement("b");
-      name.textContent = landmark ? jointLabel(id) : boneLabel(id);
-      name.style.color = landmark ? "#ffffff" : dotColorCss(id);
+      name.textContent = finger ? poseLabel(id) : landmark ? jointLabel(id) : boneLabel(id);
+      name.style.color = landmark || finger ? "#ffffff" : dotColorCss(id);
       this.grabLabel.append(name);
-      if (!landmark) {
+      if (!landmark && !finger) {
         const where = document.createElement("small");
         where.textContent = bonePlace(id);
         this.grabLabel.append(where);

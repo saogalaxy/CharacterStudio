@@ -113,6 +113,7 @@ async def markers(request):
             envelopes=body.get("envelopes"),
             tags=body.get("tags"),
             fingers=body.get("fingers"),
+            finger_tips=body.get("finger_tips"),
         )
     except ValueError as exc:
         raise web.HTTPBadRequest(text=str(exc))
