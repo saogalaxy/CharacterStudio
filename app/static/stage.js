@@ -156,6 +156,7 @@ export class Stage {
       if (!src) return;
       const clip = src.clone();
       clip.name = name;
+      this._retargetClip(clip, gltf.scene);
       const action = this.mixer.clipAction(clip);
       action.setLoop(THREE.LoopRepeat, Infinity);
       action.clampWhenFinished = false;
@@ -163,6 +164,71 @@ export class Stage {
       key = name;
     }
     if (key) this.play(key);
+  }
+
+  _retargetClip(clip, srcScene) {
+    const srcBind = new Map();
+    if (srcScene) {
+      srcScene.updateMatrixWorld(true);
+      srcScene.traverse((obj) => {
+        if (obj.isBone) srcBind.set(obj.name, obj.quaternion.clone());
+      });
+    }
+    if (!srcBind.size) return;
+    let srcH = 0;
+    if (srcScene) {
+      const box = new THREE.Box3();
+      srcScene.traverse((obj) => {
+        if (obj.isBone) {
+          const p = new THREE.Vector3();
+          obj.getWorldPosition(p);
+          box.expandByPoint(p);
+        }
+      });
+      if (!box.isEmpty()) srcH = box.max.y - box.min.y;
+    }
+    const scale = srcH > 0 ? this.H / srcH : 1;
+    const kept = [];
+    for (const track of clip.tracks) {
+      let parsed = null;
+      try {
+        parsed = THREE.PropertyBinding.parseTrackName(track.name);
+      } catch (err) {
+        parsed = null;
+      }
+      const bone = parsed ? parsed.nodeName : track.name.split(".")[0];
+      const prop = parsed ? parsed.propertyName : track.name.split(".").pop();
+      if (prop === "quaternion") {
+        const qSrc = srcBind.get(bone);
+        const bind = this._bind[bone];
+        if (qSrc && bind) {
+          const offset = bind.q.clone().multiply(qSrc.clone().invert());
+          const values = track.values;
+          for (let i = 0; i < values.length; i += 4) {
+            const q = new THREE.Quaternion(values[i], values[i + 1], values[i + 2], values[i + 3]);
+            q.premultiply(offset);
+            values[i] = q.x;
+            values[i + 1] = q.y;
+            values[i + 2] = q.z;
+            values[i + 3] = q.w;
+          }
+        }
+        kept.push(track);
+      } else if (prop === "position") {
+        if (bone === "root") {
+          if (scale !== 1) {
+            const values = track.values;
+            for (let i = 0; i < values.length; i += 3) {
+              values[i] *= scale;
+              values[i + 1] *= scale;
+              values[i + 2] *= scale;
+            }
+          }
+          kept.push(track);
+        }
+      }
+    }
+    clip.tracks = kept;
   }
 
   _frameObject(obj) {
