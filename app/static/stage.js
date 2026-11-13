@@ -181,6 +181,46 @@ function makeCapsule(tubeGeo, capGeo, color) {
   return hold;
 }
 
+// Unit octahedral bone along +Y from head (0) to tip (1), Blender proportions.
+const OCTA_WIDTH = 0.12;
+let _octaGeo = null;
+function octaBoneGeo() {
+  if (_octaGeo) return _octaGeo;
+  const s = OCTA_WIDTH;
+  const verts = new Float32Array([
+    0, 0, 0,
+    s, s, 0,
+    0, s, s,
+    -s, s, 0,
+    0, s, -s,
+    0, 1, 0,
+  ]);
+  const idx = [
+    0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 1,
+    5, 2, 1, 5, 3, 2, 5, 4, 3, 5, 1, 4,
+  ];
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(verts, 3));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  _octaGeo = geo;
+  return geo;
+}
+
+function placeOctaBone(mesh, from, to) {
+  const length = from.distanceTo(to);
+  if (length < 1e-4) {
+    mesh.visible = false;
+    return false;
+  }
+  mesh.position.copy(from);
+  _envDir.subVectors(to, from).normalize();
+  mesh.quaternion.setFromUnitVectors(Y_AXIS, _envDir);
+  mesh.scale.setScalar(length);
+  mesh.visible = true;
+  return true;
+}
+
 const ENVELOPE_JOINT = { neck_01: "neck_base" };
 const ENVELOPE_TAIL = {
   pelvis: "spine_01",
@@ -492,6 +532,7 @@ export class Stage {
     this.joints = {};
     this.dots = {};
     this.bones = null;
+    this.boneStyle = "stick";
     this.hiddenBones = new Set();
     this.hiddenEnvs = new Set();
     this._fingerSegs = [];
@@ -569,10 +610,7 @@ export class Stage {
 
   clearOverlay() {
     this._clearDots();
-    if (this.bones) {
-      this.scene.remove(this.bones);
-      this.bones = null;
-    }
+    this._dropBones();
     this.envelopes.clear();
     this.fingerTips = null;
     this.picked = null;
@@ -909,10 +947,7 @@ export class Stage {
     this.offMarkers = offMarkers || [];
     this.unlocked = new Set(unlocked || []);
     this._clearDots();
-    if (this.bones) {
-      this.scene.remove(this.bones);
-      this.bones = null;
-    }
+    this._dropBones();
     for (const spec of LANDMARKS) {
       const src = this.joints[spec.joints[0]];
       if (!src) continue;
@@ -938,11 +973,11 @@ export class Stage {
     this.H = height || this.H;
     if (fingers) this.fingers = fingers;
     if (tips && !live) this.fingerTips = JSON.parse(JSON.stringify(tips));
-    if (this.bones) this.scene.remove(this.bones);
+    this._dropBones();
     const fingersDrawn = fingerLayout(this.joints, this.fingers || "five", this.fingerTips);
     this.fingerTips = fingersDrawn.dots;
     this._fingerSegs = fingersDrawn.lines.map(([a, b]) => [a.slice(), b.slice()]);
-    this._drawBoneLines();
+    this._drawBones();
     this._clearDots();
     for (const name of visibleDots(this.joints)) {
       const value = this.joints[name];
@@ -985,7 +1020,14 @@ export class Stage {
       const mesh = this.dots[name];
       if (mesh) mesh.visible = !hidden;
     }
-    this._drawBoneLines();
+    this._drawBones();
+  }
+
+  setBoneStyle(style) {
+    const next = style === "blender" ? "blender" : "stick";
+    if (next === this.boneStyle) return;
+    this.boneStyle = next;
+    this._drawBones();
   }
 
   setEnvelopeHidden(name, hidden) {
@@ -1261,23 +1303,74 @@ export class Stage {
     color.needsUpdate = true;
   }
 
-  _drawBoneLines() {
-    if (this.bones) {
-      this.scene.remove(this.bones);
-      this.bones.geometry.dispose();
-      this.bones.material.dispose();
-      this.bones = null;
+  _dropBones() {
+    if (!this.bones) return;
+    this.scene.remove(this.bones);
+    if (this.bones.isGroup) {
+      const shared = this.bones.userData.octa;
+      if (shared?.edges) shared.edges.dispose();
+      if (shared?.mat) shared.mat.dispose();
+      if (shared?.edgeMat) shared.edgeMat.dispose();
+    } else {
+      this.bones.geometry?.dispose();
+      this.bones.material?.dispose();
     }
-    if (!this.joints) return;
-    const pos = [];
-    const add = (a, b) => pos.push(...toThree(a).toArray(), ...toThree(b).toArray());
+    this.bones = null;
+  }
+
+  _boneSegments() {
+    const segs = [];
     for (const [a, b] of LINKS) {
-      if (!this.joints[a] || !this.joints[b]) continue;
+      if (!this.joints?.[a] || !this.joints?.[b]) continue;
       if (this.hiddenBones.has(a) || this.hiddenBones.has(b)) continue;
-      add(this.joints[a], this.joints[b]);
+      segs.push([toThree(this.joints[a]), toThree(this.joints[b])]);
     }
-    for (const [a, b] of this._fingerSegs || []) add(a, b);
-    if (!pos.length) return;
+    for (const [a, b] of this._fingerSegs || []) {
+      segs.push([toThree(a), toThree(b)]);
+    }
+    return segs;
+  }
+
+  _drawBones() {
+    this._dropBones();
+    if (!this.joints) return;
+    const segs = this._boneSegments();
+    if (!segs.length) return;
+    if (this.boneStyle === "blender") {
+      const group = new THREE.Group();
+      const geo = octaBoneGeo();
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0xffd27a,
+        transparent: true,
+        opacity: 0.82,
+        depthTest: false,
+        side: THREE.DoubleSide,
+      });
+      const edgeMat = new THREE.LineBasicMaterial({
+        color: 0xfff0c8,
+        transparent: true,
+        opacity: 0.98,
+        depthTest: false,
+      });
+      const edges = new THREE.EdgesGeometry(geo);
+      for (const [from, to] of segs) {
+        const hold = new THREE.Group();
+        const fill = new THREE.Mesh(geo, mat);
+        const wire = new THREE.LineSegments(edges, edgeMat);
+        hold.add(fill, wire);
+        if (!placeOctaBone(hold, from, to)) continue;
+        hold.renderOrder = 5;
+        group.add(hold);
+      }
+      group.userData.octa = { mat, edgeMat, edges };
+      this.bones = group;
+      this.scene.add(group);
+      return;
+    }
+    const pos = [];
+    for (const [from, to] of segs) {
+      pos.push(from.x, from.y, from.z, to.x, to.y, to.z);
+    }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
     this.bones = new THREE.LineSegments(

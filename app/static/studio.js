@@ -1,4 +1,4 @@
-import { Stage, ENVELOPE_BONES, boneLabel, bonePlace, dotColorCss, envelopeColorCss, poseLabel, visibleDots } from "./stage.js?v=af58";
+import { Stage, ENVELOPE_BONES, boneLabel, bonePlace, dotColorCss, envelopeColorCss, poseLabel, visibleDots } from "./stage.js?v=af60";
 
 const STEPS = [
   ["source", "Source"],
@@ -33,6 +33,7 @@ let showAnimBones = false;
 let showAnimEnv = false;
 let showAnimHeat = false;
 let showHeat = false;
+let boneStyle = "stick";
 let libraryScroll = 0;
 
 async function api(path, options) {
@@ -504,6 +505,23 @@ function drawRig() {
   };
   bones.append("Show skeleton", boneTick);
   box.appendChild(bones);
+  if (showBones) {
+    const style = document.createElement("label");
+    style.className = "row";
+    const styleTick = document.createElement("input");
+    styleTick.type = "checkbox";
+    styleTick.checked = boneStyle === "blender";
+    styleTick.onchange = () => {
+      boneStyle = styleTick.checked ? "blender" : "stick";
+      stage.setBoneStyle(boneStyle);
+    };
+    style.append("Blender bones", styleTick);
+    box.appendChild(style);
+    const styleNote = document.createElement("p");
+    styleNote.className = "help";
+    styleNote.textContent = "Octahedral bones like Blender. Stick figure stays the default.";
+    box.appendChild(styleNote);
+  }
   if (showBones && job.markers?.joints) {
     const names = visibleDots(job.markers.joints);
     box.appendChild(eyeTools("bone", names));
@@ -1387,6 +1405,7 @@ function paintMarkers() {
     return;
   }
   if (view === "rig" && showBones && job.running !== "rig") {
+    stage.setBoneStyle(boneStyle);
     stage.setBones(det.joints, det.height, det.fingers || "five", det.finger_tips || null);
     stage.showEnvelopes(showEnv, det.envelopes || {});
   } else if (view === "markers" && det?.joints) {
