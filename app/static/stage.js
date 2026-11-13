@@ -45,6 +45,7 @@ const AF_VIEW = {
   spine_02: "Mid belly",
   spine_03: "Chest",
   neck_base: "Neck",
+  neck_01: "Neck",
   head: "Head",
   head_top: "Crown",
   clavicle_l: "Collarbone",
@@ -101,10 +102,185 @@ const ENDS = new Set(["head_top", "hand_tip_l", "hand_tip_r", "toe_l", "toe_r"])
 const SIDE = { c: 0xf5c542, l: 0x3d8bfd, r: 0xe23b3b };
 const SIDE_END = { c: 0xc9a84a, l: 0x9ec1ff, r: 0xf0a0a0 };
 
+export const ENVELOPE_BONES = [
+  "head", "neck_01", "clavicle_l", "clavicle_r", "spine_03",
+  "upperarm_l", "lowerarm_l", "hand_l",
+  "upperarm_r", "lowerarm_r", "hand_r",
+  "spine_02", "spine_01", "pelvis",
+  "thigh_l", "calf_l", "foot_l",
+  "thigh_r", "calf_r", "foot_r",
+];
+const ENVELOPE_COLOR = {
+  pelvis: 0xf5c542,
+  spine_01: 0x8fd14f,
+  spine_02: 0x3dcc9a,
+  spine_03: 0x3d8bfd,
+  neck_01: 0xb07cff,
+  head: 0xf0a0ff,
+  clavicle_l: 0x5ec8ff,
+  upperarm_l: 0x6256e8,
+  lowerarm_l: 0x2ec4b6,
+  hand_l: 0x7d8cff,
+  clavicle_r: 0xff8a5b,
+  upperarm_r: 0xe23b3b,
+  lowerarm_r: 0xff5e8a,
+  hand_r: 0xffb020,
+  thigh_l: 0x4aa3ff,
+  calf_l: 0x20d0c8,
+  foot_l: 0x8b7cff,
+  thigh_r: 0xff6b4a,
+  calf_r: 0xff4d6d,
+  foot_r: 0xffc14d,
+};
+
+export function envelopeColorCss(name) {
+  const color = ENVELOPE_COLOR[name] || 0xd4c8d8;
+  return "#" + color.toString(16).padStart(6, "0");
+}
+const Y_AXIS = new THREE.Vector3(0, 1, 0);
+const _envA = new THREE.Vector3();
+const _envB = new THREE.Vector3();
+const _envDir = new THREE.Vector3();
+
+function envelopeRadius(height, scale) {
+  return Math.max(height, 0.2) * 0.08 * (scale || 1);
+}
+
+function placeCapsule(hold, from, to, radius) {
+  const length = from.distanceTo(to);
+  const tube = hold.children[0];
+  const capA = hold.children[1];
+  const capB = hold.children[2];
+  if (!tube || length < 1e-4) {
+    hold.visible = false;
+    return false;
+  }
+  hold.scale.set(1, 1, 1);
+  hold.position.copy(from).lerp(to, 0.5);
+  _envDir.subVectors(to, from).normalize();
+  hold.quaternion.setFromUnitVectors(Y_AXIS, _envDir);
+  tube.scale.set(radius, length, radius);
+  capA.position.set(0, length * 0.5, 0);
+  capB.position.set(0, -length * 0.5, 0);
+  capA.scale.setScalar(radius);
+  capB.scale.setScalar(radius);
+  hold.visible = !hold.userData.hidden;
+  return true;
+}
+
+function makeCapsule(tubeGeo, capGeo, color) {
+  const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.34, depthWrite: false });
+  const hold = new THREE.Group();
+  hold.renderOrder = 2;
+  hold.userData.mat = mat;
+  for (const geo of [tubeGeo, capGeo, capGeo]) {
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.renderOrder = 2;
+    hold.add(mesh);
+  }
+  return hold;
+}
+
+const ENVELOPE_JOINT = { neck_01: "neck_base" };
+const ENVELOPE_TAIL = {
+  pelvis: "spine_01",
+  spine_01: "spine_02",
+  spine_02: "spine_03",
+  spine_03: "neck_01",
+  neck_01: "head",
+  head: "head_top",
+  clavicle_l: "upperarm_l",
+  upperarm_l: "lowerarm_l",
+  lowerarm_l: "hand_l",
+  hand_l: "hand_tip_l",
+  clavicle_r: "upperarm_r",
+  upperarm_r: "lowerarm_r",
+  lowerarm_r: "hand_r",
+  hand_r: "hand_tip_r",
+  thigh_l: "calf_l",
+  calf_l: "foot_l",
+  foot_l: "ball_l",
+  thigh_r: "calf_r",
+  calf_r: "foot_r",
+  foot_r: "ball_r",
+};
+const ENVELOPE_END = {
+  pelvis: "spine_01",
+  spine_01: "spine_02",
+  spine_02: "spine_03",
+  spine_03: "neck_base",
+  neck_01: "head",
+  head: "head_top",
+  clavicle_l: "upperarm_l",
+  upperarm_l: "lowerarm_l",
+  lowerarm_l: "hand_l",
+  hand_l: "hand_tip_l",
+  clavicle_r: "upperarm_r",
+  upperarm_r: "lowerarm_r",
+  lowerarm_r: "hand_r",
+  hand_r: "hand_tip_r",
+  thigh_l: "calf_l",
+  calf_l: "foot_l",
+  foot_l: "ball_l",
+  thigh_r: "calf_r",
+  calf_r: "foot_r",
+  foot_r: "ball_r",
+};
+const JOINT_TO_SKIN = {
+  neck_base: "neck_01",
+  head_top: "head",
+  hand_tip_l: "hand_l",
+  hand_tip_r: "hand_r",
+  ball_l: "foot_l",
+  ball_r: "foot_r",
+  toe_l: "foot_l",
+  toe_r: "foot_r",
+};
+
+function heatRamp(weight, out, offset) {
+  const t = Math.min(1, Math.max(0, weight));
+  const x = t * 3;
+  const i = Math.min(2, Math.floor(x));
+  const f = x - i;
+  const stops = [
+    0.12, 0.28, 0.72,
+    0.10, 0.78, 0.72,
+    0.98, 0.86, 0.20,
+    0.86, 0.18, 0.16,
+  ];
+  const a = i * 3;
+  out[offset] = stops[a] + (stops[a + 3] - stops[a]) * f;
+  out[offset + 1] = stops[a + 1] + (stops[a + 4] - stops[a + 1]) * f;
+  out[offset + 2] = stops[a + 2] + (stops[a + 5] - stops[a + 2]) * f;
+}
+
+function hashColor(name) {
+  let h = 2166136261;
+  for (let i = 0; i < name.length; i++) h = Math.imul(h ^ name.charCodeAt(i), 16777619);
+  const hue = (h >>> 0) % 360;
+  const sat = 0.62;
+  const lit = 0.52;
+  const c = (1 - Math.abs(2 * lit - 1)) * sat;
+  const hp = hue / 60;
+  const x = c * (1 - Math.abs(hp % 2 - 1));
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  if (hp < 1) { r = c; g = x; }
+  else if (hp < 2) { r = x; g = c; }
+  else if (hp < 3) { g = c; b = x; }
+  else if (hp < 4) { g = x; b = c; }
+  else if (hp < 5) { r = x; b = c; }
+  else { r = c; b = x; }
+  const m = lit - c / 2;
+  return [r + m, g + m, b + m];
+}
+
 export const SKELETON_DOTS = [
-  "pelvis", "spine_01", "spine_02", "spine_03", "neck_base", "head", "head_top",
-  "clavicle_l", "upperarm_l", "lowerarm_l", "hand_l", "hand_tip_l",
-  "clavicle_r", "upperarm_r", "lowerarm_r", "hand_r", "hand_tip_r",
+  "head_top", "head", "neck_base", "clavicle_l", "clavicle_r", "spine_03",
+  "upperarm_l", "lowerarm_l", "hand_l", "hand_tip_l",
+  "upperarm_r", "lowerarm_r", "hand_r", "hand_tip_r",
+  "spine_02", "spine_01", "pelvis",
   "thigh_l", "calf_l", "foot_l", "ball_l", "toe_l",
   "thigh_r", "calf_r", "foot_r", "ball_r", "toe_r",
 ];
@@ -304,11 +480,21 @@ export class Stage {
     this.hold = false;
     this.fit = { hip: 0, arms: 1, legs: 1, arm_space: 0, arm_fwd: 0, turn: 0, leg_space: 0 };
     this.view = "front";
+    this.locked = false;
+    this.showSkeleton = false;
+    this.skel = null;
+    this.skelDots = null;
+    this.showAnimEnv = false;
+    this.envScales = {};
+    this.animEnv = null;
     this.mode = "mesh";
     this.H = 1;
     this.joints = {};
     this.dots = {};
     this.bones = null;
+    this.hiddenBones = new Set();
+    this.hiddenEnvs = new Set();
+    this._fingerSegs = [];
     this.unlocked = new Set();
     this.sym = true;
     this.fingerTips = null;
@@ -322,6 +508,18 @@ export class Stage {
     this.hit = new THREE.Vector3();
     this.envelopes = new THREE.Group();
     this.scene.add(this.envelopes);
+    this.heatOn = false;
+    this.heatBone = "";
+    this.heatRoot = null;
+    this.heatMesh = null;
+    this.heatUrl = "";
+    this.heatLive = false;
+    this.wantAnimHeat = false;
+    this.animHeat = false;
+    this.animHeatMeshes = null;
+    this._heatTask = null;
+    this._heatToken = 0;
+    this._heatPainted = null;
     this.light = new THREE.HemisphereLight(0xffffff, 0x223, 1.2);
     this.scene.add(this.light);
     this.grid = new THREE.GridHelper(4, 16, 0x445066, 0x2a3140);
@@ -351,6 +549,11 @@ export class Stage {
   }
 
   clearModel() {
+    this._restoreAnimWeights();
+    this._heatToken++;
+    this._dropHeat();
+    this._dropAnimEnvelopes();
+    this._dropSkeleton();
     if (this.root) this.scene.remove(this.root);
     this.root = null;
     this._pivot = null;
@@ -404,6 +607,8 @@ export class Stage {
     this._cacheBind();
     this._placeGrid();
     this.mode = hold ? "pose" : "play";
+    this._syncSkeleton();
+    this._syncAnimEnvelopes();
   }
 
   actionName(name) {
@@ -585,21 +790,107 @@ export class Stage {
       left: [center.x + d, center.y, center.z],
       right: [center.x - d, center.y, center.z],
     };
-    this.controls.enabled = true;
     if (spots[name]) {
       this.camera.position.set(...spots[name]);
       this.camera.up.set(0, 1, 0);
       this.camera.lookAt(center);
       this.controls.target.copy(center);
     }
+    this.controls.enabled = !this.locked;
     this.controls.update();
-    document.querySelectorAll(".views button").forEach((b) => b.classList.toggle("on", b.dataset.view === name));
+    document.querySelectorAll(".views button[data-view]").forEach((b) => b.classList.toggle("on", b.dataset.view === name));
+  }
+
+  setLocked(on) {
+    this.locked = !!on;
+    this.controls.enabled = !this.locked;
+    if (this.locked) {
+      this.controls._sphericalDelta.set(0, 0, 0);
+      this.controls._panOffset.set(0, 0, 0);
+      this.controls._scale = 1;
+    }
   }
 
   _releaseView() {
-    if (this.view === "free") return;
+    if (this.locked || this.view === "free") return;
     this.view = "free";
-    document.querySelectorAll(".views button").forEach((b) => b.classList.toggle("on", b.dataset.view === "free"));
+    document.querySelectorAll(".views button[data-view]").forEach((b) => b.classList.toggle("on", b.dataset.view === "free"));
+  }
+
+  setSkeleton(on) {
+    this.showSkeleton = !!on;
+    this._syncSkeleton();
+  }
+
+  _dropSkeleton() {
+    if (this.skel) {
+      this.scene.remove(this.skel);
+      this.skel.geometry.dispose();
+      this.skel.material.dispose();
+      this.skel = null;
+    }
+    if (this.skelDots) {
+      this.scene.remove(this.skelDots.group);
+      this.skelDots.geo.dispose();
+      this.skelDots.mat.dispose();
+      this.skelDots = null;
+    }
+    if (this.hintId && !this.dots[this.hintId]) this._hideGrabLabel();
+  }
+
+  _syncSkeleton() {
+    const live = this.showSkeleton && this.root && (this.mode === "play" || this.mode === "pose");
+    if (!live) {
+      this._dropSkeleton();
+      return;
+    }
+    if (this.skel) return;
+    const helper = new THREE.SkeletonHelper(this.root);
+    helper.material.vertexColors = false;
+    helper.material.needsUpdate = true;
+    helper.material.color.set(0xffd27a);
+    helper.material.depthTest = false;
+    helper.material.transparent = true;
+    helper.material.opacity = 0.95;
+    helper.frustumCulled = false;
+    helper.renderOrder = 8;
+    this.scene.add(helper);
+    this.skel = helper;
+    const group = new THREE.Group();
+    const geo = new THREE.SphereGeometry(1, 10, 8);
+    const mat = new THREE.MeshBasicMaterial({ color: 0xffe1a8, depthTest: false });
+    const byName = {};
+    this.root.traverse((obj) => {
+      if (!obj.isBone) return;
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.renderOrder = 9;
+      mesh.userData = { id: obj.name, bone: obj };
+      group.add(mesh);
+      if (obj.name && !byName[obj.name]) byName[obj.name] = mesh;
+    });
+    this.scene.add(group);
+    this.skelDots = { group, geo, mat, byName };
+    this._placeSkeleton();
+  }
+
+  _placeSkeleton() {
+    if (!this.skel || !this.root) return;
+    this.root.updateWorldMatrix(true, true);
+    this.skel.updateMatrixWorld(true);
+    const full = Math.max(this.H, 0.2) * 0.011;
+    const parentAt = this._bonePos || (this._bonePos = new THREE.Vector3());
+    for (const mesh of this.skelDots.group.children) {
+      const bone = mesh.userData.bone;
+      bone.getWorldPosition(mesh.position);
+      let size = full;
+      const parent = bone.parent;
+      if (parent && parent.isBone) {
+        parent.getWorldPosition(parentAt);
+        size = Math.min(full, parentAt.distanceTo(mesh.position) * 0.28);
+        size = Math.max(size, full * 0.28);
+      }
+      mesh.scale.setScalar(size);
+    }
   }
 
   setDots(joints, height, offJoints, offMarkers, unlocked) {
@@ -650,21 +941,8 @@ export class Stage {
     if (this.bones) this.scene.remove(this.bones);
     const fingersDrawn = fingerLayout(this.joints, this.fingers || "five", this.fingerTips);
     this.fingerTips = fingersDrawn.dots;
-    const pos = [];
-    const add = (a, b) => pos.push(...toThree(a).toArray(), ...toThree(b).toArray());
-    for (const [a, b] of LINKS) {
-      if (!this.joints[a] || !this.joints[b]) continue;
-      add(this.joints[a], this.joints[b]);
-    }
-    for (const [a, b] of fingersDrawn.lines) add(a, b);
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
-    this.bones = new THREE.LineSegments(
-      geo,
-      new THREE.LineBasicMaterial({ color: 0xffd27a, depthTest: false, transparent: true, opacity: 0.95 }),
-    );
-    this.bones.renderOrder = 5;
-    this.scene.add(this.bones);
+    this._fingerSegs = fingersDrawn.lines.map(([a, b]) => [a.slice(), b.slice()]);
+    this._drawBoneLines();
     this._clearDots();
     for (const name of visibleDots(this.joints)) {
       const value = this.joints[name];
@@ -674,6 +952,7 @@ export class Stage {
         new THREE.MeshBasicMaterial({ color: dotColor(name), depthTest: false }),
       );
       mesh.position.copy(toThree(value));
+      mesh.visible = !this.hiddenBones.has(name);
       mesh.userData = { kind: "joint", id: name, blender: value.slice() };
       mesh.renderOrder = 6;
       this.scene.add(mesh);
@@ -695,18 +974,435 @@ export class Stage {
     if (picked && picked.userData.kind === "joint") picked.scale.setScalar(1.45);
   }
 
+  setBoneHidden(name, hidden) {
+    this.setBonesHidden([name], hidden);
+  }
+
+  setBonesHidden(names, hidden) {
+    for (const name of names) {
+      if (hidden) this.hiddenBones.add(name);
+      else this.hiddenBones.delete(name);
+      const mesh = this.dots[name];
+      if (mesh) mesh.visible = !hidden;
+    }
+    this._drawBoneLines();
+  }
+
+  setEnvelopeHidden(name, hidden) {
+    this.setEnvelopesHidden([name], hidden);
+  }
+
+  setEnvelopesHidden(names, hidden) {
+    const want = new Set(names);
+    for (const name of want) {
+      if (hidden) this.hiddenEnvs.add(name);
+      else this.hiddenEnvs.delete(name);
+    }
+    const apply = (group) => {
+      if (!group) return;
+      for (const hold of group.children) {
+        if (!want.has(hold.userData.name)) continue;
+        hold.userData.hidden = hidden;
+        hold.visible = !hidden;
+      }
+    };
+    apply(this.envelopes);
+    apply(this.animEnv);
+    if (hidden && want.has(this._envFocus)) this.highlightEnvelope("");
+  }
+
+  isolateBone(name) {
+    const names = Object.entries(this.dots)
+      .filter(([, mesh]) => mesh.userData.kind === "joint")
+      .map(([id]) => id);
+    if (!names.includes(name)) return;
+    this.setBonesHidden(names.filter((id) => id !== name), true);
+    this.setBonesHidden([name], false);
+    this.onIsolate && this.onIsolate("bone", name);
+  }
+
+  isolateEnvelope(name) {
+    const names = this.envelopes.children.map((hold) => hold.userData.name).filter(Boolean);
+    if (!names.includes(name)) return;
+    this.setEnvelopesHidden(names.filter((id) => id !== name), true);
+    this.setEnvelopesHidden([name], false);
+    this.highlightEnvelope(name);
+    this.onIsolate && this.onIsolate("env", name);
+  }
+
+  setWeightPaint(on, url) {
+    if (!on) {
+      if (this.heatLive) return;
+      this.heatOn = false;
+      this._applyHeatVisible();
+      return;
+    }
+    this.heatOn = true;
+    if (this.heatMesh && this.heatUrl === url) {
+      if (this._heatPainted !== this.heatBone) this._paintHeat();
+      this._applyHeatVisible();
+      return;
+    }
+    if (this._heatTask) return;
+    const token = this._heatToken;
+    this._heatTask = this._loadHeat(url).then(() => {
+      this._heatTask = null;
+      if (token !== this._heatToken || !this.heatOn || !this.heatMesh) return;
+      this._paintHeat();
+      this._applyHeatVisible();
+    }).catch((err) => {
+      this._heatTask = null;
+      console.error(err);
+    });
+  }
+
+  setWeightBone(name) {
+    const next = name || "";
+    if (next === this.heatBone) return;
+    this.heatBone = next;
+    this._heatPainted = null;
+    if (this.heatOn && this.heatMesh) {
+      this._paintHeat();
+      this._applyHeatVisible();
+    }
+  }
+
+  setAnimWeights(on) {
+    this.wantAnimHeat = !!on;
+    if (on) {
+      this.heatBone = "";
+      this._heatPainted = null;
+    }
+    this._applyAnimWeights();
+  }
+
+  _applyAnimWeights() {
+    const want = this.wantAnimHeat && this.root && (this.mode === "play" || this.mode === "pose");
+    if (!want) {
+      this._restoreAnimWeights();
+      return;
+    }
+    if (this.animHeat) {
+      if (this._heatPainted !== this.heatBone) this._paintHeat();
+      if (this.animEnv) this.animEnv.visible = false;
+      return;
+    }
+    const meshes = [];
+    this.root.traverse((obj) => {
+      if (!obj.isSkinnedMesh) return;
+      const geo = obj.geometry;
+      if (!geo?.attributes?.position || !geo.attributes.skinIndex || !geo.attributes.skinWeight) return;
+      if (!geo.attributes.color) {
+        geo.setAttribute("color", new THREE.BufferAttribute(new Float32Array(geo.attributes.position.count * 3), 3));
+      }
+      const previous = obj.material;
+      const side = Array.isArray(previous) ? previous[0]?.side : previous?.side;
+      obj.userData.paintMaterial = previous;
+      obj.material = new THREE.MeshBasicMaterial({ vertexColors: true, side: side ?? THREE.FrontSide });
+      meshes.push(obj);
+    });
+    if (!meshes.length) return;
+    this.animHeatMeshes = meshes;
+    this.animHeat = true;
+    this.heatLive = true;
+    this.heatOn = true;
+    this.heatMesh = meshes[0];
+    this._heatPainted = null;
+    this._paintHeat();
+    if (this.animEnv) this.animEnv.visible = false;
+  }
+
+  _restoreAnimWeights() {
+    if (!this.animHeat) return;
+    for (const mesh of this.animHeatMeshes || []) {
+      const saved = mesh.userData.paintMaterial;
+      if (!saved) continue;
+      mesh.material.dispose();
+      mesh.material = saved;
+      delete mesh.userData.paintMaterial;
+    }
+    this.animHeatMeshes = null;
+    this.animHeat = false;
+    if (this.heatLive) {
+      this.heatLive = false;
+      this.heatOn = false;
+      this.heatMesh = null;
+      this._heatPainted = null;
+    }
+    if (this.animEnv) this.animEnv.visible = true;
+  }
+
+  _skinBone(name) {
+    if (!name || !this.heatMesh) return "";
+    const bones = this.heatMesh.skeleton.bones;
+    const has = (bone) => bones.some((item) => item.name === bone);
+    if (has(name)) return name;
+    const mapped = JOINT_TO_SKIN[name];
+    if (mapped && has(mapped)) return mapped;
+    return "";
+  }
+
+  _loadHeat(url) {
+    const token = this._heatToken;
+    return this.loader.loadAsync(url).then((gltf) => {
+      if (token !== this._heatToken) return;
+      let mesh = null;
+      gltf.scene.traverse((obj) => {
+        if (obj.isSkinnedMesh && !mesh) mesh = obj;
+      });
+      if (!mesh) return;
+      const previous = mesh.material;
+      mesh.geometry = mesh.geometry.clone();
+      const count = mesh.geometry.attributes.position.count;
+      mesh.geometry.setAttribute("color", new THREE.BufferAttribute(new Float32Array(count * 3), 3));
+      mesh.material = new THREE.MeshBasicMaterial({ vertexColors: true });
+      if (previous) {
+        const mats = Array.isArray(previous) ? previous : [previous];
+        mats.forEach((item) => item.dispose());
+      }
+      mesh.frustumCulled = false;
+      gltf.scene.traverse((obj) => {
+        if (obj.isBone) obj.visible = false;
+        if (obj.isMesh && obj !== mesh) obj.visible = false;
+      });
+      this._dropHeat();
+      this.heatRoot = gltf.scene;
+      this.heatMesh = mesh;
+      this.heatUrl = url;
+      this._heatPainted = null;
+      this.scene.add(gltf.scene);
+      gltf.scene.visible = false;
+    });
+  }
+
+  _dropHeat() {
+    if (!this.heatRoot) return;
+    this.scene.remove(this.heatRoot);
+    this.heatRoot.traverse((obj) => {
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) {
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+        mats.forEach((item) => item.dispose());
+      }
+    });
+    this.heatRoot = null;
+    this.heatMesh = null;
+    this.heatUrl = "";
+    this._heatPainted = null;
+  }
+
+  _applyHeatVisible() {
+    const on = this.heatOn && !!this.heatRoot;
+    if (this.root) this.root.visible = !on;
+    if (this.heatRoot) this.heatRoot.visible = on;
+    this.envelopes.visible = !on;
+  }
+
+  _paintHeat() {
+    const meshes = this.heatLive && this.animHeatMeshes?.length
+      ? this.animHeatMeshes
+      : (this.heatMesh ? [this.heatMesh] : []);
+    for (const mesh of meshes) this._paintHeatMesh(mesh);
+    this._heatPainted = this.heatBone;
+  }
+
+  _paintHeatMesh(mesh) {
+    if (!mesh) return;
+    const geo = mesh.geometry;
+    const index = geo.attributes.skinIndex;
+    const weight = geo.attributes.skinWeight;
+    const color = geo.attributes.color;
+    if (!index || !weight || !color) return;
+    const idx = index.array;
+    const wts = weight.array;
+    const out = color.array;
+    const bones = mesh.skeleton.bones;
+    const boneName = this._skinBone(this.heatBone);
+    let boneIndex = -1;
+    if (boneName) {
+      for (let i = 0; i < bones.length; i++) {
+        if (bones[i].name === boneName) { boneIndex = i; break; }
+      }
+    }
+    const count = geo.attributes.position.count;
+    if (boneIndex >= 0) {
+      for (let i = 0; i < count; i++) {
+        const o = i * 4;
+        let w = 0;
+        if (idx[o] === boneIndex) w += wts[o];
+        if (idx[o + 1] === boneIndex) w += wts[o + 1];
+        if (idx[o + 2] === boneIndex) w += wts[o + 2];
+        if (idx[o + 3] === boneIndex) w += wts[o + 3];
+        heatRamp(w, out, i * 3);
+      }
+    } else {
+      const cols = new Array(bones.length);
+      for (let i = 0; i < bones.length; i++) {
+        const hex = ENVELOPE_COLOR[bones[i].name];
+        cols[i] = hex
+          ? [((hex >> 16) & 255) / 255, ((hex >> 8) & 255) / 255, (hex & 255) / 255]
+          : hashColor(bones[i].name || "");
+      }
+      for (let i = 0; i < count; i++) {
+        const o = i * 4;
+        let best = wts[o];
+        let bi = idx[o];
+        if (wts[o + 1] > best) { best = wts[o + 1]; bi = idx[o + 1]; }
+        if (wts[o + 2] > best) { best = wts[o + 2]; bi = idx[o + 2]; }
+        if (wts[o + 3] > best) { best = wts[o + 3]; bi = idx[o + 3]; }
+        const rgb = cols[bi] || [0.4, 0.4, 0.45];
+        const scale = 0.28 + 0.72 * best;
+        const c = i * 3;
+        out[c] = rgb[0] * scale;
+        out[c + 1] = rgb[1] * scale;
+        out[c + 2] = rgb[2] * scale;
+      }
+    }
+    color.needsUpdate = true;
+  }
+
+  _drawBoneLines() {
+    if (this.bones) {
+      this.scene.remove(this.bones);
+      this.bones.geometry.dispose();
+      this.bones.material.dispose();
+      this.bones = null;
+    }
+    if (!this.joints) return;
+    const pos = [];
+    const add = (a, b) => pos.push(...toThree(a).toArray(), ...toThree(b).toArray());
+    for (const [a, b] of LINKS) {
+      if (!this.joints[a] || !this.joints[b]) continue;
+      if (this.hiddenBones.has(a) || this.hiddenBones.has(b)) continue;
+      add(this.joints[a], this.joints[b]);
+    }
+    for (const [a, b] of this._fingerSegs || []) add(a, b);
+    if (!pos.length) return;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    this.bones = new THREE.LineSegments(
+      geo,
+      new THREE.LineBasicMaterial({ color: 0xffd27a, depthTest: false, transparent: true, opacity: 0.95 }),
+    );
+    this.bones.renderOrder = 5;
+    this.scene.add(this.bones);
+  }
+
   showEnvelopes(on, scales) {
+    const geos = new Set();
+    const mats = new Set();
+    this.envelopes.traverse((obj) => {
+      if (obj.geometry) geos.add(obj.geometry);
+      if (obj.material) mats.add(obj.material);
+    });
     this.envelopes.clear();
+    geos.forEach((geo) => geo.dispose());
+    mats.forEach((mat) => mat.dispose());
     if (!on) return;
-    for (const name of ["pelvis", "spine_01", "spine_02", "spine_03", "thigh_l", "thigh_r"]) {
-      if (!this.joints[name]) continue;
-      const sc = (scales && scales[name]) || 1;
-      const sphere = new THREE.Mesh(
-        new THREE.SphereGeometry(this.H * 0.08 * sc, 16, 12),
-        new THREE.MeshBasicMaterial({ color: 0x66e0ff, transparent: true, opacity: 0.18, depthWrite: false }),
-      );
-      sphere.position.copy(toThree(this.joints[name]));
-      this.envelopes.add(sphere);
+    const tubeGeo = new THREE.CylinderGeometry(1, 1, 1, 16, 1);
+    const capGeo = new THREE.SphereGeometry(1, 16, 12);
+    for (const name of ENVELOPE_BONES) {
+      const start = this.joints[ENVELOPE_JOINT[name] || name];
+      const end = this.joints[ENVELOPE_END[name]];
+      if (!start || !end) continue;
+      const hold = makeCapsule(tubeGeo, capGeo, ENVELOPE_COLOR[name] || 0xd4c8d8);
+      hold.userData.name = name;
+      hold.userData.hidden = this.hiddenEnvs.has(name);
+      if (!placeCapsule(hold, toThree(start), toThree(end), envelopeRadius(this.H, (scales && scales[name]) || 1))) continue;
+      this.envelopes.add(hold);
+    }
+    this._paintEnvelopeFocus(this.envelopes);
+  }
+
+  highlightEnvelope(name) {
+    this._envFocus = name || "";
+    this._paintEnvelopeFocus(this.envelopes);
+    this._paintEnvelopeFocus(this.animEnv);
+  }
+
+  _paintEnvelopeFocus(group) {
+    if (!group) return;
+    const focus = this._envFocus;
+    for (const hold of group.children) {
+      const hot = !!focus && hold.userData.name === focus;
+      const mat = hold.userData.mat;
+      if (mat) mat.opacity = !focus ? 0.34 : hot ? 0.82 : 0.06;
+      const order = hot ? 6 : 2;
+      hold.renderOrder = order;
+      for (const mesh of hold.children) mesh.renderOrder = order;
+    }
+  }
+
+  setAnimEnvelopes(on, scales) {
+    this.showAnimEnv = !!on;
+    this.envScales = scales || {};
+    this._envStamp = null;
+    this._syncAnimEnvelopes();
+  }
+
+  _dropAnimEnvelopes() {
+    if (!this.animEnv) return;
+    const mats = new Set();
+    this.animEnv.traverse((obj) => {
+      if (obj.material) mats.add(obj.material);
+    });
+    mats.forEach((mat) => mat.dispose());
+    this.scene.remove(this.animEnv);
+    this.animEnvGeo.dispose();
+    this.animEnvCap.dispose();
+    this.animEnv = null;
+    this.animEnvGeo = null;
+    this.animEnvCap = null;
+    this.animEnvMat = null;
+    this._envStamp = null;
+  }
+
+  _syncAnimEnvelopes() {
+    const live = this.showAnimEnv && this.root && (this.mode === "play" || this.mode === "pose");
+    if (!live) {
+      this._dropAnimEnvelopes();
+      return;
+    }
+    const stamp = JSON.stringify(this.envScales || {});
+    if (this.animEnv && this._envStamp === stamp) return;
+    this._dropAnimEnvelopes();
+    const bones = {};
+    this.root.traverse((obj) => {
+      if (obj.isBone && obj.name) bones[obj.name] = obj;
+    });
+    const group = new THREE.Group();
+    const geo = new THREE.CylinderGeometry(1, 1, 1, 16, 1);
+    const cap = new THREE.SphereGeometry(1, 16, 12);
+    for (const name of ENVELOPE_BONES) {
+      const bone = bones[name] || bones[ENVELOPE_JOINT[name]];
+      const tail = bone && bones[ENVELOPE_TAIL[name]];
+      if (!bone || !tail) continue;
+      const hold = makeCapsule(geo, cap, ENVELOPE_COLOR[name] || 0xd4c8d8);
+      hold.userData.bone = bone;
+      hold.userData.tail = tail;
+      hold.userData.name = name;
+      hold.userData.hidden = this.hiddenEnvs.has(name);
+      group.add(hold);
+    }
+    this.scene.add(group);
+    this.animEnv = group;
+    this.animEnvGeo = geo;
+    this.animEnvCap = cap;
+    this.animEnvMat = null;
+    this._envStamp = stamp;
+    this._placeAnimEnvelopes();
+    this._paintEnvelopeFocus(this.animEnv);
+    this.animEnv.visible = !this.animHeat;
+  }
+
+  _placeAnimEnvelopes() {
+    if (!this.animEnv || !this.root) return;
+    if (!this.skel) this.root.updateWorldMatrix(true, true);
+    for (const hold of this.animEnv.children) {
+      const sc = (this.envScales && this.envScales[hold.userData.name]) || 1;
+      hold.userData.bone.getWorldPosition(_envA);
+      hold.userData.tail.getWorldPosition(_envB);
+      placeCapsule(hold, _envA, _envB, envelopeRadius(this.H, sc));
     }
   }
 
@@ -736,7 +1432,7 @@ export class Stage {
 
   _hover(ev) {
     if (this.drag) return;
-    const hit = this._pick(ev);
+    const hit = this._pick(ev) || this._pickSkel(ev);
     if (hit) {
       this._showGrabLabel(hit.userData.id);
       return;
@@ -762,21 +1458,106 @@ export class Stage {
     if (this.grabLabel && !this.grabLabel.hidden) this._placeGrabLabel();
   }
 
-  _pick(ev) {
+  _pickHeat(ev) {
+    if (!this.heatOn || !this.heatMesh) return "";
+    if (!this.heatLive && !this.heatRoot?.visible) return "";
+    const meshes = this.heatLive && this.animHeatMeshes?.length ? this.animHeatMeshes : [this.heatMesh];
+    this._aim(ev);
+    const hits = this.ray.intersectObjects(meshes, false);
+    const hit = hits[0];
+    if (!hit || !hit.face) return "";
+    const geo = hit.object.geometry;
+    const idx = geo.attributes.skinIndex?.array;
+    const wts = geo.attributes.skinWeight?.array;
+    const bones = hit.object.skeleton.bones;
+    if (!idx || !wts) return "";
+    const tally = new Map();
+    for (const vi of [hit.face.a, hit.face.b, hit.face.c]) {
+      const o = vi * 4;
+      for (let k = 0; k < 4; k++) {
+        const w = wts[o + k];
+        if (w <= 0) continue;
+        const name = bones[idx[o + k]]?.name;
+        if (!name) continue;
+        tally.set(name, (tally.get(name) || 0) + w);
+      }
+    }
+    let best = "";
+    let score = 0;
+    for (const [name, w] of tally) {
+      if (w > score) { score = w; best = name; }
+    }
+    return best;
+  }
+
+  _useHeatBone(name) {
+    if (!name) return;
+    const mesh = this.dots[name];
+    if (mesh && mesh.userData.kind === "joint") {
+      this.isolateBone(name);
+      return;
+    }
+    this.setWeightBone(name);
+    this.onIsolate && this.onIsolate("bone", name);
+  }
+
+  _pickEnvelope(ev) {
+    if (this.mode !== "mesh" || !this.envelopes.children.length) return null;
+    this._aim(ev);
+    const meshes = [];
+    for (const hold of this.envelopes.children) {
+      if (!hold.visible) continue;
+      for (const mesh of hold.children) {
+        if (mesh.isMesh) meshes.push(mesh);
+      }
+    }
+    const hits = this.ray.intersectObjects(meshes, false);
+    return hits[0] ? hits[0].object.parent : null;
+  }
+
+  _aim(ev) {
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.pointer.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
     this.pointer.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
     this.ray.setFromCamera(this.pointer, this.camera);
+  }
+
+  _pick(ev) {
+    this._aim(ev);
     const hits = this.ray.intersectObjects(Object.values(this.dots), false);
     return hits[0] ? hits[0].object : null;
   }
 
+  _pickSkel(ev) {
+    if (!this.skelDots) return null;
+    this._aim(ev);
+    const hits = this.ray.intersectObjects(this.skelDots.group.children, false);
+    return hits[0] ? hits[0].object : null;
+  }
+
   _down(ev) {
+    this._press = { x: ev.clientX, y: ev.clientY };
+    this._heatClick = false;
     const hit = this._pick(ev);
     if (!hit) {
-      if (ev.button === 0) this._releaseView();
+      const env = ev.button === 0 ? this._pickEnvelope(ev) : null;
+      if (env && env.userData.name) {
+        this.isolateEnvelope(env.userData.name);
+        this.controls.enabled = false;
+        ev.preventDefault();
+        return;
+      }
+      if (ev.button === 0 && this._pickHeat(ev)) {
+        this._heatClick = true;
+        return;
+      }
+      if (ev.button === 0) {
+        if (this.heatLive && this.heatBone) this.setWeightBone("");
+        this._releaseView();
+      }
       return;
     }
+    if (hit.userData.kind === "joint") this.isolateBone(hit.userData.id);
     this.controls.enabled = false;
     const spec = BY_ID[hit.userData.id];
     if (spec && spec.tone === "follow" && !this.unlocked.has(spec.id)) {
@@ -928,13 +1709,24 @@ export class Stage {
     }
   }
 
-  _up() {
-    this.controls.enabled = true;
-    if (!this.drag) return;
-    const moved = this.drag.id;
-    this.drag = null;
-    this._beginHintFade();
-    this.onJoints && this.onJoints(this.joints, moved);
+  _up(ev) {
+    const press = this._press;
+    const heatClick = this._heatClick;
+    this._press = null;
+    this._heatClick = false;
+    this.controls.enabled = !this.locked;
+    if (this.drag) {
+      const moved = this.drag.id;
+      this.drag = null;
+      this._beginHintFade();
+      this.onJoints && this.onJoints(this.joints, moved);
+      return;
+    }
+    if (!heatClick || !press) return;
+    const dx = ev.clientX - press.x;
+    const dy = ev.clientY - press.y;
+    if (dx * dx + dy * dy > 25) return;
+    this._useHeatBone(this._pickHeat(ev));
   }
 
   _showGrabLabel(id) {
@@ -981,7 +1773,7 @@ export class Stage {
   }
 
   _placeGrabLabel() {
-    const mesh = this.dots[this.hintId];
+    const mesh = this.dots[this.hintId] || this.skelDots?.byName[this.hintId];
     const lab = this.grabLabel;
     if (!mesh || !lab || lab.hidden) return;
     const at = this._labelPoint(mesh);
@@ -1117,6 +1909,8 @@ export class Stage {
       this._holdFrame();
     }
     if (this.mode === "play" || this.mode === "pose") this._applyFit();
+    this._placeSkeleton();
+    this._placeAnimEnvelopes();
     if (this.onPlayback) this.onPlayback(this.playback());
     this.controls.update();
     this._layoutLabels();

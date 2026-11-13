@@ -1,5 +1,6 @@
 runtime/
 jobs/
+fallback/
 __pycache__/
 *.pyc
 node_modules/

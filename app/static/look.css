@@ -46,10 +46,16 @@ button, select, input[type="number"] { background: #11141a; color: var(--text); 
 button.step { background: #1a1f28; border: 1px solid #2a3140; border-radius: 12px; padding: 8px 10px; }
 button.step.on { border-color: var(--accent); }
 button.primary { background: var(--accent); color: #1a1206; border: 0; font-weight: 600; }
+button.stop { color: #ffd0d0; background: #3a1618; border-color: var(--bad); }
+#stage .gen-status button.stop { pointer-events: auto; }
 button:disabled { opacity: 0.45; }
 .banner { background: #3a1618; color: #ffd0d0; border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; }
 .views { display: flex; gap: 4px; position: absolute; left: 10px; top: 10px; z-index: 6; }
 .views button.on { border-color: var(--accent); color: var(--accent); }
+.views button.gone { display: none; }
+.views button.lock { padding: 6px 8px; line-height: 0; }
+.views button.lock svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.views button.lock.on svg rect { fill: currentColor; }
 .dock { position: absolute; left: 10px; right: 10px; bottom: 10px; z-index: 3; display: flex; gap: 8px; align-items: center; background: rgba(12,14,18,.8); padding: 8px; border-radius: 10px; }
 .dock input[type="range"] { flex: 1; }
 .dock .speed { flex: 0 0 88px; }
@@ -76,7 +82,22 @@ h3.sub { margin: 12px 0 6px; font-size: 13px; color: var(--muted); font-weight: 
 .label { position: absolute; color: white; font-size: 12px; pointer-events: none; text-shadow: 0 1px 2px #000; transform: translate(8px, -50%); display: flex; flex-direction: column; gap: 2px; max-width: 240px; opacity: 1; transition: opacity 0.4s; z-index: 4; }
 .path { color: var(--text); margin: 0 0 10px; word-break: break-all; font-size: 12px; }
 .label small { color: #f2f4f8; font-size: 11px; line-height: 1.3; }
-.dotlist { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 8px; margin: 4px 0 12px; max-height: 240px; overflow: auto; }
+.dotlist { display: grid; grid-template-columns: 1fr; gap: 3px; margin: 4px 0 12px; max-height: 240px; overflow: auto; }
 .dotrow { display: flex; align-items: center; gap: 6px; font-size: 12px; }
-.dotrow span { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+.dotrow .swatch { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+.dotrow .bone-name { min-width: 0; }
+button.eye { width: 22px; height: 18px; padding: 0; border: 0; background: transparent; color: var(--muted); flex: 0 0 auto; line-height: 0; }
+button.eye svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+button.eye.off { color: #6d7480; }
+.eye-tools { display: flex; gap: 6px; margin: 2px 0 8px; }
+.eye-tools button { padding: 3px 8px; font-size: 11px; }
+.dotrow.dim .swatch, .dotrow.dim .bone-name, .env-key.dim .name { opacity: 0.38; }
+.dotrow.hot { background: rgba(255,255,255,.1); border-radius: 6px; }
+.dotrow.hot .bone-name { color: white; }
+.env-key { border-radius: 6px; margin-left: -4px; margin-right: -4px; padding: 2px 4px; }
+.env-key .name { display: inline-flex; align-items: center; gap: 6px; min-width: 0; flex: 1; }
+.env-key .swatch { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; box-shadow: 0 0 0 1px rgba(0,0,0,.45); }
+.env-key.hot { background: rgba(255,255,255,.1); }
+.env-key.hot .name { color: white; }
+.env-legend { margin: 4px 0 12px; }
 .status { color: var(--muted); min-height: 1.2em; }

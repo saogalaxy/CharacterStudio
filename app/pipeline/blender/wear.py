@@ -409,17 +409,133 @@ def remove_objects(objs):
             bpy.data.objects.remove(o, do_unlink=True)
 
 
+TEAR_RATIO = 2.5
+CRUSH_RATIO = 1.0 / TEAR_RATIO
+
+
+def _weight_table(body):
+    names = {g.index: g.name for g in body.vertex_groups}
+    table = []
+    for vert in body.data.vertices:
+        pairs = []
+        for slot in vert.groups:
+            weight = float(slot.weight)
+            if weight < 0.05:
+                continue
+            pairs.append((names.get(slot.group, str(slot.group)), round(weight, 3)))
+        pairs.sort(key=lambda item: -item[1])
+        table.append(pairs[:4])
+    return table
+
+
+def _edge_bones(table, a, b):
+    merged = {}
+    for index in (int(a), int(b)):
+        if index < 0 or index >= len(table):
+            continue
+        for name, weight in table[index]:
+            merged[name] = max(merged.get(name, 0.0), weight)
+    ranked = sorted(merged.items(), key=lambda item: -item[1])[:4]
+    owner = ranked[0][0] if ranked else None
+    return [[name, weight] for name, weight in ranked], owner
+
+
+def _bind_heads(arm):
+    mw = arm.matrix_world
+    heads = {}
+    for bone in arm.data.bones:
+        if not bone.use_deform:
+            continue
+        head = mw @ bone.head_local
+        heads[bone.name] = [round(head.x, 4), round(head.y, 4), round(head.z, 4)]
+    return heads
+
+
+def _top(counts, limit=8):
+    ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    return {name: count for name, count in ranked[:limit]}
+
+
+def _sorted_counts(counts):
+    return {name: count for name, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))}
+
+
+def _interpenetrations(ids, rest, posed, owners, linked, touch):
+    """Vertices from different bones that were apart at rest and now occupy one spot."""
+    if touch <= 1e-8:
+        return []
+    grid = {}
+    for index in ids:
+        cell = (
+            int(math.floor(posed[index][0] / touch)),
+            int(math.floor(posed[index][1] / touch)),
+            int(math.floor(posed[index][2] / touch)),
+        )
+        grid.setdefault(cell, []).append(index)
+    hits = []
+    far = touch * 4.0
+    for index in ids:
+        cell = (
+            int(math.floor(posed[index][0] / touch)),
+            int(math.floor(posed[index][1] / touch)),
+            int(math.floor(posed[index][2] / touch)),
+        )
+        origin = posed[index]
+        rest_i = rest[index]
+        bone_i = owners.get(index)
+        if not bone_i:
+            continue
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for dz in (-1, 0, 1):
+                    for other in grid.get((cell[0] + dx, cell[1] + dy, cell[2] + dz), ()):
+                        if other <= index:
+                            continue
+                        bone_o = owners.get(other)
+                        if not bone_o or bone_o == bone_i:
+                            continue
+                        pair = (index, other)
+                        if pair in linked:
+                            continue
+                        other_p = posed[other]
+                        dxp = origin[0] - other_p[0]
+                        dyp = origin[1] - other_p[1]
+                        dzp = origin[2] - other_p[2]
+                        dist = math.sqrt(dxp * dxp + dyp * dyp + dzp * dzp)
+                        if dist > touch:
+                            continue
+                        rest_o = rest[other]
+                        dxr = rest_i[0] - rest_o[0]
+                        dyr = rest_i[1] - rest_o[1]
+                        dzr = rest_i[2] - rest_o[2]
+                        rest_dist = math.sqrt(dxr * dxr + dyr * dyr + dzr * dzr)
+                        if rest_dist < far:
+                            continue
+                        hits.append({
+                            "verts": [index, other],
+                            "rest": round(rest_dist, 5),
+                            "posed": round(dist, 5),
+                            "bones": [bone_i, bone_o],
+                        })
+    return hits
+
+
 def deform_gate(body, arm):
     rest = {}
     for edge in body.data.edges:
         a, b = edge.vertices
         rest[edge.index] = (body.data.vertices[a].co - body.data.vertices[b].co).length
     sample = list(rest)[::max(1, len(rest) // 4000)]
+    lengths = sorted(rest[i] for i in sample if rest[i] > 1e-6)
+    median = lengths[len(lengths) // 2] if lengths else 0.0
+    touch = median * 0.75
+    weights = _weight_table(body)
+    owners = {index: pairs[0][0] for index, pairs in enumerate(weights) if pairs}
     scene = bpy.context.scene
     poses = {}
-    worst = 1.0
+    detail = {}
     tears = 0
-    action = bpy.data.actions.get("walk") or bpy.data.actions.get("idle")
+    used_bones = set()
     frames = [("idle", 30), ("walk", 1), ("walk", 9), ("walk", 25), ("mild_crouch", 20)]
     for clip, frame in frames:
         act = bpy.data.actions.get(clip)
@@ -432,7 +548,17 @@ def deform_gate(body, arm):
         ev = body.evaluated_get(deps)
         me = ev.to_mesh()
         stretch = 1.0
+        shrink = 1.0
         bad = 0
+        torn = []
+        crushed_edges = []
+        tear_bones = {}
+        crush_bones = {}
+        posed = {}
+        rest_co = {}
+        ids = []
+        linked = set()
+        seen_verts = set()
         for idx in sample:
             if idx >= len(me.edges):
                 continue
@@ -441,16 +567,90 @@ def deform_gate(body, arm):
             base = rest.get(idx) or 1e-6
             ratio = length / base if base > 1e-6 else 1.0
             stretch = max(stretch, ratio)
-            if ratio > 2.5:
+            shrink = min(shrink, ratio)
+            bones, owner = _edge_bones(weights, a, b)
+            record = {
+                "edge": int(idx),
+                "verts": [int(a), int(b)],
+                "rest": round(base, 5),
+                "posed": round(length, 5),
+                "ratio": round(ratio, 3),
+                "bones": bones,
+            }
+            if ratio > TEAR_RATIO:
                 bad += 1
+                torn.append(record)
+                if owner:
+                    tear_bones[owner] = tear_bones.get(owner, 0) + 1
+                    used_bones.add(owner)
+            elif ratio < CRUSH_RATIO:
+                crushed_edges.append(record)
+                if owner:
+                    crush_bones[owner] = crush_bones.get(owner, 0) + 1
+                    used_bones.add(owner)
+            linked.add((min(int(a), int(b)), max(int(a), int(b))))
+            for vert in (int(a), int(b)):
+                if vert in seen_verts:
+                    continue
+                seen_verts.add(vert)
+                co = me.vertices[vert].co
+                posed[vert] = (float(co.x), float(co.y), float(co.z))
+                src = body.data.vertices[vert].co
+                rest_co[vert] = (float(src.x), float(src.y), float(src.z))
+                ids.append(vert)
         ev.to_mesh_clear()
-        poses[f"{clip}@{frame}"] = {"tears": bad, "max_stretch": round(stretch, 3)}
-        worst = max(worst, stretch)
+        hits = _interpenetrations(ids, rest_co, posed, owners, linked, touch)
+        hit_bones = {}
+        for hit in hits:
+            for name in hit["bones"]:
+                hit_bones[name] = hit_bones.get(name, 0) + 1
+                used_bones.add(name)
+        key = f"{clip}@{frame}"
+        poses[key] = {"tears": bad, "max_stretch": round(stretch, 3)}
+        detail[key] = {
+            "tears": torn,
+            "crushes": crushed_edges,
+            "interpenetrations": hits[:300],
+            "interpenetration_count": len(hits),
+            "tear_bones": _sorted_counts(tear_bones),
+            "crush_bones": _sorted_counts(crush_bones),
+            "interpenetrate_bones": _sorted_counts(hit_bones),
+            "min_ratio": round(shrink, 3),
+            "max_stretch": round(stretch, 3),
+        }
         tears += bad
+        log("deform_pose", {
+            "pose": key,
+            "tears": bad,
+            "max_stretch": round(stretch, 3),
+            "crushes": len(crushed_edges),
+            "min_ratio": round(shrink, 3),
+            "interpenetrations": len(hits),
+            "tear_bones": _top(tear_bones),
+            "crush_bones": _top(crush_bones),
+        })
     arm.animation_data.action = None
     scene.frame_set(1)
     gate = "PASS" if tears == 0 else "FAIL"
     log("deform_qa", {"gate": gate, "edges": len(sample), "poses": poses})
+    heads = _bind_heads(arm)
+    payload = {
+        "gate": gate,
+        "gate_counts": "tears only; an edge tears when posed/rest > 2.5",
+        "crush_ratio": round(CRUSH_RATIO, 3),
+        "touch": round(touch, 5),
+        "sampled_edges": len(sample),
+        "interpenetrate": (
+            "two sampled vertices on different bones, at least 4x the touch "
+            "distance apart at rest, now within the touch distance"
+        ),
+        "bind_positions": {name: heads[name] for name in sorted(used_bones) if name in heads},
+        "poses": detail,
+    }
+    path = os.path.join(out_dir, "deform_attribution.json")
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(payload, fh)
+    log("deform_attr", {"file": path, "bones": len(payload["bind_positions"]), "gate": gate})
     return gate
 
 

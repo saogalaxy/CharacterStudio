@@ -7,6 +7,11 @@ import numpy as np
 
 MARKER_NAMES = ("chin", "groin", "elbow_l", "elbow_r", "wrist_l", "wrist_r", "knee_l", "knee_r")
 ENVELOPE_BONES = ("pelvis", "spine_01", "spine_02", "spine_03", "thigh_l", "thigh_r")
+ENVELOPE_OVERRIDE_BONES = (
+    "clavicle_l", "clavicle_r", "upperarm_l", "upperarm_r", "neck_01", "head",
+    "lowerarm_l", "lowerarm_r", "hand_l", "hand_r",
+    "calf_l", "calf_r", "foot_l", "foot_r",
+)
 JOINT_GATE = (
     "pelvis", "neck", "head",
     "upperarm_l", "upperarm_r", "lowerarm_l", "lowerarm_r", "hand_l", "hand_r",

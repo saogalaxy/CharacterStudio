@@ -1,4 +1,4 @@
-import { Stage, boneLabel, bonePlace, dotColorCss, poseLabel, visibleDots } from "./stage.js?v=af37";
+import { Stage, ENVELOPE_BONES, boneLabel, bonePlace, dotColorCss, envelopeColorCss, poseLabel, visibleDots } from "./stage.js?v=af58";
 
 const STEPS = [
   ["source", "Source"],
@@ -29,6 +29,10 @@ let shown = "";
 let seenSent = false;
 let posting = false;
 let showBones = true;
+let showAnimBones = false;
+let showAnimEnv = false;
+let showAnimHeat = false;
+let showHeat = false;
 let libraryScroll = 0;
 
 async function api(path, options) {
@@ -39,7 +43,10 @@ async function api(path, options) {
 }
 
 function fileUrl(name) {
-  return `/api/jobs/${job.id}/file/${name}`;
+  const step = name === "tpose.png" ? "tpose" : name === "source.png" ? "source" : "";
+  const stamp = step ? job.steps?.[step]?.updated || "" : "";
+  const q = stamp ? `?v=${encodeURIComponent(stamp)}` : "";
+  return `/api/jobs/${job.id}/file/${name}${q}`;
 }
 
 async function boot() {
@@ -49,15 +56,68 @@ async function boot() {
   stage = new Stage(stageBox);
   stage.onJoints = (joints, moved) => postJSON("markers", { joints, finger_tips: stage.fingerTips, moved });
   stage.onPick = () => { if (view === "rig") mountRotate(); };
+  stage.onIsolate = (kind, name) => {
+    syncEyes(kind);
+    const rows = document.querySelectorAll(kind === "env" ? ".env-key" : ".dotrow");
+    rows.forEach((row) => {
+      const eye = row.querySelector("button.eye");
+      const on = eye?.dataset.bone === name;
+      row.classList.toggle("hot", on);
+      if (on) row.scrollIntoView({ block: "nearest" });
+    });
+    if (showHeat || showAnimHeat) stage.setWeightBone(name);
+  };
   const views = document.createElement("div");
   views.className = "views";
   for (const name of ["front", "left", "right", "back", "free"]) {
     const button = document.createElement("button");
+    button.type = "button";
     button.dataset.view = name;
     button.textContent = name;
     button.onclick = () => stage.setView(name);
     views.appendChild(button);
   }
+  const lock = document.createElement("button");
+  lock.type = "button";
+  lock.className = "lock";
+  lock.title = "Lock camera";
+  lock.setAttribute("aria-label", "Lock camera");
+  lock.setAttribute("aria-pressed", "false");
+  lock.appendChild(lockIcon(false));
+  lock.onclick = () => {
+    const on = !stage.locked;
+    stage.setLocked(on);
+    lock.classList.toggle("on", on);
+    lock.title = on ? "Unlock camera" : "Lock camera";
+    lock.setAttribute("aria-label", lock.title);
+    lock.setAttribute("aria-pressed", on ? "true" : "false");
+    lock.replaceChildren(lockIcon(on));
+  };
+  views.appendChild(lock);
+  const skel = document.createElement("button");
+  skel.type = "button";
+  skel.className = "skel gone";
+  skel.title = "Show the rig skeleton";
+  skel.setAttribute("aria-pressed", "false");
+  skel.textContent = "skeleton";
+  skel.onclick = () => setAnimSkeleton(!showAnimBones);
+  views.appendChild(skel);
+  const envelopes = document.createElement("button");
+  envelopes.type = "button";
+  envelopes.className = "envelopes gone";
+  envelopes.title = "Show the rig envelopes";
+  envelopes.setAttribute("aria-pressed", "false");
+  envelopes.textContent = "envelopes";
+  envelopes.onclick = () => setAnimEnvelopes(!showAnimEnv);
+  views.appendChild(envelopes);
+  const weights = document.createElement("button");
+  weights.type = "button";
+  weights.className = "weights gone";
+  weights.title = "Show the weight paint";
+  weights.setAttribute("aria-pressed", "false");
+  weights.textContent = "weights";
+  weights.onclick = () => setAnimWeights(!showAnimHeat);
+  views.appendChild(weights);
   stageBox.appendChild(views);
   if (job) {
     const first = STEPS.find(([id]) => job.steps[id].state !== "done");
@@ -232,6 +292,13 @@ function render() {
     drawPanel();
   }
   syncStage();
+  const skelButton = stageBox.querySelector(".views button.skel");
+  const envButton = stageBox.querySelector(".views button.envelopes");
+  const weightButton = stageBox.querySelector(".views button.weights");
+  const showStageTools = view === "animations" && !!job.files.rig;
+  if (skelButton) skelButton.classList.toggle("gone", !showStageTools);
+  if (envButton) envButton.classList.toggle("gone", !showStageTools);
+  if (weightButton) weightButton.classList.toggle("gone", !showStageTools);
   if (view === "animations") mountTransport();
   if (view === "rig" && showBones) mountRotate();
   else stageBox.querySelector(".rotate")?.remove();
@@ -252,6 +319,12 @@ function button(label, onclick, primary, disabled) {
   if (primary) el.className = "primary";
   el.disabled = !!disabled;
   el.onclick = onclick;
+  return el;
+}
+
+function stopButton() {
+  const el = button("Stop", () => postJSON("stop", {}));
+  el.className = "stop";
   return el;
 }
 
@@ -305,15 +378,25 @@ function drawTpose() {
   }
   select.onchange = () => postJSON("tpose-settings", { method: select.value, prompt: settings.prompt, custom_prompt: settings.custom_prompt });
   box.appendChild(select);
+  let area = null;
   if (settings.method === "custom") {
-    const area = document.createElement("textarea");
+    area = document.createElement("textarea");
     area.value = settings.prompt || "";
     area.rows = 5;
     area.style.width = "100%";
     area.onchange = () => postJSON("tpose-settings", { method: "custom", prompt: area.value, custom_prompt: area.value });
     box.appendChild(area);
   }
-  box.appendChild(button("Generate T-pose", () => postJSON("run/tpose", {}), true, !job.can_run.tpose));
+  box.appendChild(button("Generate T-pose", () => {
+    const body = { method: select.value };
+    if (select.value === "custom") {
+      const text = area ? area.value : (settings.custom_prompt || settings.prompt || "");
+      body.prompt = text;
+      body.custom_prompt = text;
+    }
+    postJSON("run/tpose", body);
+  }, true, !job.can_run.tpose));
+  if (job.running === "tpose") box.appendChild(stopButton());
   box.appendChild(fileButton("Upload my own T-pose", "image/*", "tpose"));
   panel.appendChild(box);
 }
@@ -347,6 +430,7 @@ function drawMesh() {
   seed.onchange = () => postJSON("mesh-settings", { seed_mode: "lock", seed: Number(seed.value), target_tris: settings.target_tris });
   box.appendChild(seed);
   box.appendChild(button("Generate mesh", () => postJSON("run/mesh", {}), true, !job.can_run.mesh));
+  if (job.running === "mesh") box.appendChild(stopButton());
   box.appendChild(fileButton("Upload my own mesh (.glb)", ".glb", "mesh"));
   panel.appendChild(box);
   if (job.mesh_check) {
@@ -388,6 +472,24 @@ function drawRig() {
   help.className = "help";
   help.textContent = "Each finger has its own dot. Drag a dot to move it, or use Bend, Twist, and Swing to rotate that limb.";
   box.appendChild(help);
+  const heat = document.createElement("label");
+  heat.className = "row";
+  const heatTick = document.createElement("input");
+  heatTick.type = "checkbox";
+  heatTick.checked = showHeat;
+  heatTick.disabled = !job.files.rig;
+  heatTick.onchange = () => {
+    showHeat = heatTick.checked;
+    paintMarkers();
+  };
+  heat.append("Weight paint", heatTick);
+  box.appendChild(heat);
+  const heatNote = document.createElement("p");
+  heatNote.className = "help";
+  heatNote.textContent = job.files.rig
+    ? "Colors the last bind. Click a bone or a volume to paint that bone. Red is strong and blue is none."
+    : "Bind the character once. Weight paint uses that result.";
+  box.appendChild(heatNote);
   const bones = document.createElement("label");
   bones.className = "row";
   const boneTick = document.createElement("input");
@@ -403,15 +505,33 @@ function drawRig() {
   bones.append("Show skeleton", boneTick);
   box.appendChild(bones);
   if (showBones && job.markers?.joints) {
+    const names = visibleDots(job.markers.joints);
+    box.appendChild(eyeTools("bone", names));
     const list = document.createElement("div");
     list.className = "dotlist";
-    for (const name of visibleDots(job.markers.joints)) {
+    for (const name of names) {
       const row = document.createElement("div");
       row.className = "dotrow";
+      const label = boneLabel(name);
+      const shown = !stage.hiddenBones.has(name);
+      if (!shown) row.classList.add("dim");
+      const eye = document.createElement("button");
+      eye.type = "button";
+      eye.className = "eye";
+      eye.dataset.kind = "bone";
+      eye.dataset.bone = name;
+      bindEye(eye, label, shown, (on) => {
+        stage.setBoneHidden(name, !on);
+        row.classList.toggle("dim", !on);
+      });
       const swatch = document.createElement("span");
+      swatch.className = "swatch";
       swatch.style.background = dotColorCss(name);
+      const text = document.createElement("span");
+      text.className = "bone-name";
+      text.textContent = label;
       row.title = bonePlace(name);
-      row.append(swatch, boneLabel(name));
+      row.append(eye, swatch, text);
       list.appendChild(row);
     }
     box.appendChild(list);
@@ -432,20 +552,12 @@ function drawRig() {
   };
   env.append("Show envelopes", envTick);
   box.appendChild(env);
-  for (const bone of ["pelvis", "spine_01", "spine_02", "spine_03", "thigh_l", "thigh_r"]) {
-    const row = document.createElement("label");
-    row.className = "row";
-    row.append(bone.replaceAll("_", " "));
-    const slider = document.createElement("input");
-    slider.type = "range";
-    slider.min = "0.5";
-    slider.max = "2";
-    slider.step = "0.05";
-    slider.value = String((job.markers?.envelopes || {})[bone] || 1);
-    slider.onchange = () => postJSON("markers", { envelopes: { [bone]: Number(slider.value) } });
-    row.appendChild(slider);
-    box.appendChild(row);
-  }
+  const envNote = document.createElement("p");
+  envNote.className = "help";
+  envNote.textContent = "Each color is one bone. Point at a name and that area brightens.";
+  box.appendChild(envNote);
+  box.appendChild(eyeTools("env", ENVELOPE_BONES));
+  fillEnvelopeKey(box, true);
   const fingers = document.createElement("select");
   for (const name of ["five", "four", "three", "mitten"]) {
     const option = document.createElement("option");
@@ -461,8 +573,230 @@ function drawRig() {
   panel.appendChild(box);
 }
 
+function fillEnvelopeKey(host, withSlider) {
+  for (const bone of ENVELOPE_BONES) {
+    const row = document.createElement("div");
+    row.className = "row env-key";
+    const label = boneLabel(bone);
+    const shown = !stage.hiddenEnvs.has(bone);
+    if (!shown) row.classList.add("dim");
+    const eye = document.createElement("button");
+    eye.type = "button";
+    eye.className = "eye";
+    eye.dataset.kind = "env";
+    eye.dataset.bone = bone;
+    bindEye(eye, label, shown, (on) => {
+      stage.setEnvelopeHidden(bone, !on);
+      row.classList.toggle("dim", !on);
+      if (!on) stage.highlightEnvelope("");
+    });
+    const name = document.createElement("span");
+    name.className = "name";
+    const swatch = document.createElement("span");
+    swatch.className = "swatch";
+    swatch.style.background = envelopeColorCss(bone);
+    name.append(swatch, label);
+    row.append(eye, name);
+    if (withSlider) {
+      const slider = document.createElement("input");
+      slider.type = "range";
+      slider.min = "0.5";
+      slider.max = "2";
+      slider.step = "0.05";
+      slider.value = String((job.markers?.envelopes || {})[bone] || 1);
+      slider.onchange = () => postJSON("markers", { envelopes: { [bone]: Number(slider.value) } });
+      row.appendChild(slider);
+    }
+    const hot = (on) => {
+      row.classList.toggle("hot", on);
+      if (on && stage.hiddenEnvs.has(bone)) return;
+      stage.highlightEnvelope(on ? bone : "");
+    };
+    row.onmouseenter = () => hot(true);
+    row.onmouseleave = () => hot(false);
+    host.appendChild(row);
+  }
+}
+
+function mountEnvLegend(host) {
+  host.querySelector(".env-legend")?.remove();
+  if (!showAnimEnv) {
+    stage.highlightEnvelope("");
+    return;
+  }
+  const key = document.createElement("div");
+  key.className = "env-legend";
+  key.appendChild(eyeTools("env", ENVELOPE_BONES));
+  fillEnvelopeKey(key, false);
+  host.appendChild(key);
+}
+function eyeTools(kind, names) {
+  const bar = document.createElement("div");
+  bar.className = "eye-tools";
+  const make = (text, hidden) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = text;
+    button.onclick = () => {
+      if (kind === "env") stage.setEnvelopesHidden(names, hidden);
+      else stage.setBonesHidden(names, hidden);
+      syncEyes(kind);
+      if (!hidden && (showHeat || showAnimHeat)) stage.setWeightBone("");
+    };
+    return button;
+  };
+  bar.append(make("Select all", false), make("Deselect all", true));
+  return bar;
+}
+
+function syncEyes(kind) {
+  document.querySelectorAll(`button.eye[data-kind="${kind}"]`).forEach((button) => {
+    const hidden = kind === "env"
+      ? stage.hiddenEnvs.has(button.dataset.bone)
+      : stage.hiddenBones.has(button.dataset.bone);
+    paintEye(button, !hidden);
+    button.closest(".dotrow, .env-key")?.classList.toggle("dim", hidden);
+  });
+}
+
+function paintEye(button, on) {
+  button.classList.toggle("off", !on);
+  const label = button.dataset.label || "";
+  button.title = (on ? "Hide " : "Show ") + label;
+  button.setAttribute("aria-label", button.title);
+  button.setAttribute("aria-pressed", on ? "true" : "false");
+  button.replaceChildren(eyeIcon(on));
+}
+
+function bindEye(button, label, shown, apply) {
+  button.dataset.label = label;
+  paintEye(button, shown);
+  button.onclick = (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const on = button.classList.contains("off");
+    apply(on);
+    paintEye(button, on);
+  };
+}
+
+function eyeIcon(open) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  const outline = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  outline.setAttribute("d", "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z");
+  const pupil = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  pupil.setAttribute("cx", "12");
+  pupil.setAttribute("cy", "12");
+  pupil.setAttribute("r", "3");
+  svg.append(outline, pupil);
+  if (!open) {
+    const slash = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    slash.setAttribute("d", "M4 20L20 4");
+    svg.appendChild(slash);
+  }
+  return svg;
+}
+
+function lockIcon(closed) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  const body = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+  body.setAttribute("x", "5");
+  body.setAttribute("y", "11");
+  body.setAttribute("width", "14");
+  body.setAttribute("height", "10");
+  body.setAttribute("rx", "2");
+  const shackle = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  shackle.setAttribute("d", closed ? "M8 11V7a4 4 0 0 1 8 0v4" : "M8 11V8a4 4 0 0 1 7.5-1");
+  svg.append(body, shackle);
+  return svg;
+}
+
+function setAnimSkeleton(on) {
+  showAnimBones = !!on;
+  stage.setSkeleton(showAnimBones);
+  const button = stageBox.querySelector(".views button.skel");
+  if (button) {
+    button.classList.toggle("on", showAnimBones);
+    button.setAttribute("aria-pressed", showAnimBones ? "true" : "false");
+    button.title = showAnimBones ? "Hide the rig skeleton" : "Show the rig skeleton";
+  }
+  const tick = panel.querySelector("input[data-skel]");
+  if (tick) tick.checked = showAnimBones;
+}
+
+function setAnimEnvelopes(on) {
+  showAnimEnv = !!on;
+  stage.setAnimEnvelopes(showAnimEnv, job?.markers?.envelopes || {});
+  const button = stageBox.querySelector(".views button.envelopes");
+  if (button) {
+    button.classList.toggle("on", showAnimEnv);
+    button.setAttribute("aria-pressed", showAnimEnv ? "true" : "false");
+    button.title = showAnimEnv ? "Hide the rig envelopes" : "Show the rig envelopes";
+  }
+  const tick = panel.querySelector("input[data-anim-env]");
+  if (tick) tick.checked = showAnimEnv;
+}
+
+function setAnimWeights(on) {
+  showAnimHeat = !!on;
+  stage.setAnimWeights(showAnimHeat);
+  const button = stageBox.querySelector(".views button.weights");
+  if (button) {
+    button.classList.toggle("on", showAnimHeat);
+    button.setAttribute("aria-pressed", showAnimHeat ? "true" : "false");
+    button.title = showAnimHeat ? "Hide the weight paint" : "Show the weight paint";
+  }
+  const tick = panel.querySelector("input[data-anim-weight]");
+  if (tick) tick.checked = showAnimHeat;
+}
+
 function drawAnimations() {
   const box = card("Motions");
+  if (job.files.rig) {
+    const bones = document.createElement("label");
+    bones.className = "row";
+    const tick = document.createElement("input");
+    tick.type = "checkbox";
+    tick.dataset.skel = "1";
+    tick.checked = showAnimBones;
+    tick.onchange = () => setAnimSkeleton(tick.checked);
+    bones.append("Show skeleton", tick);
+    box.appendChild(bones);
+    const env = document.createElement("label");
+    env.className = "row";
+    const envTick = document.createElement("input");
+    envTick.type = "checkbox";
+    envTick.dataset.animEnv = "1";
+    envTick.checked = showAnimEnv;
+    envTick.onchange = () => {
+      setAnimEnvelopes(envTick.checked);
+      mountEnvLegend(box);
+    };
+    env.append("Show envelopes", envTick);
+    box.appendChild(env);
+    const weights = document.createElement("label");
+    weights.className = "row";
+    const weightTick = document.createElement("input");
+    weightTick.type = "checkbox";
+    weightTick.dataset.animWeight = "1";
+    weightTick.checked = showAnimHeat;
+    weightTick.onchange = () => setAnimWeights(weightTick.checked);
+    weights.append("Show weights", weightTick);
+    box.appendChild(weights);
+    const weightNote = document.createElement("p");
+    weightNote.className = "help";
+    weightNote.textContent = "Colors the last bind on the moving mesh. Click the body to paint one bone. Red is strong and blue is none. Click empty space to see every bone again. Envelopes hide while this is on.";
+    box.appendChild(weightNote);
+    const note = document.createElement("p");
+    note.className = "help";
+    note.textContent = "Each color is one bone. Point at a name and that area brightens.";
+    box.appendChild(note);
+    mountEnvLegend(box);
+  }
   if (!job.files.rig) {
     const need = document.createElement("p");
     need.className = "help";
@@ -990,7 +1324,8 @@ function paintGeneration(status) {
     const bar = document.createElement("div");
     bar.className = "bar";
     bar.appendChild(document.createElement("i"));
-    box.append(frame, name, bar);
+    const stop = stopButton();
+    box.append(frame, name, bar, stop);
     stageBox.appendChild(box);
     shown = "status";
   }
@@ -1008,8 +1343,8 @@ async function syncStage() {
   stageBox.querySelector(".gen-status")?.remove();
   const rigging = job.running === "rig" && !job.files.rig;
   let mode = "empty";
-  if (view === "source" && job.files.source) mode = "image:source.png";
-  else if (view === "tpose" && job.files.tpose) mode = "image:tpose.png";
+  if (view === "source" && job.files.source) mode = `image:source.png:${job.steps.source?.updated || ""}`;
+  else if (view === "tpose" && job.files.tpose) mode = `image:tpose.png:${job.steps.tpose?.updated || ""}`;
   else if (view === "animations" && job.files.rig) mode = "play";
   else if ((view === "markers" || view === "mesh" || view === "rig" || view === "animations" || rigging) && job.files.mesh) mode = "mesh";
   if (mode === shown) {
@@ -1026,7 +1361,7 @@ async function syncStage() {
     stage.clearModel();
     const img = document.createElement("img");
     img.className = "sheet";
-    img.src = fileUrl(mode.slice(6));
+    img.src = fileUrl(mode.slice(6).split(":")[0]);
     stageBox.appendChild(img);
     return;
   }
@@ -1040,6 +1375,8 @@ async function syncStage() {
     if (mode === "play" && job.animations?.selected) {
       await stage.playClip(job.animations.selected, motionUrl(job.animations.selected));
     }
+    stage.setAnimEnvelopes(showAnimEnv, job.markers?.envelopes || {});
+    stage.setAnimWeights(showAnimHeat);
   }
 }
 
@@ -1056,6 +1393,11 @@ function paintMarkers() {
     stage.setDots(det.joints, det.height, det.joints_off_body || [], det.off_body || [], []);
   } else {
     stage.clearOverlay();
+  }
+  if (view === "rig" && showHeat && job.files.rig && job.running !== "rig") {
+    stage.setWeightPaint(true, fileUrl("rig/rigged_animated.glb"));
+  } else if (stage) {
+    stage.setWeightPaint(false);
   }
 }
 

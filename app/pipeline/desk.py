@@ -27,26 +27,61 @@ def alive():
         return False
 
 
-def ensure(log_path):
+def _stopped(cancel):
+    return cancel is not None and cancel.is_set()
+
+
+def ensure(log_path, cancel=None):
     if alive():
         return
+    if _stopped(cancel):
+        raise rt.Cancelled()
     main = rt.COMFY / "main.py"
     if not main.is_file():
         raise RuntimeError("ComfyUI is not in the runtime folder")
-    rt.spawn(
+    proc = rt.spawn(
         [str(rt.PYTHON), str(main), "--listen", "127.0.0.1", "--port", str(PORT), "--disable-auto-launch"],
         log_path,
         cwd=str(rt.COMFY),
     )
     for _ in range(180):
+        if _stopped(cancel):
+            rt.kill_tree(proc)
+            raise rt.Cancelled()
         if alive():
             return
         time.sleep(1)
     raise RuntimeError("ComfyUI did not start")
 
 
-def upload_image(path: Path):
-    ensure(rt.JOBS / "comfy.log")
+def cancel_prompt(prompt_id):
+    """Interrupt one ComfyUI prompt. Pending prompts are dropped from the queue."""
+    if not prompt_id or not alive():
+        return
+    quoted = urllib.parse.quote(str(prompt_id))
+    calls = [
+        ("/queue", {"delete": [prompt_id]}),
+        (f"/api/jobs/{quoted}/cancel", {}),
+        ("/interrupt", {"prompt_id": prompt_id}),
+    ]
+    for path, payload in calls:
+        try:
+            req = urllib.request.Request(
+                _base() + path,
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=10) as res:
+                res.read()
+        except (urllib.error.URLError, TimeoutError, OSError):
+            continue
+
+
+def upload_image(path: Path, cancel=None):
+    ensure(rt.JOBS / "comfy.log", cancel)
+    if _stopped(cancel):
+        raise rt.Cancelled()
     boundary = "----studio" + uuid.uuid4().hex
     filename = path.name
     mime = mimetypes.guess_type(filename)[0] or "application/octet-stream"
@@ -204,8 +239,10 @@ def _drain_progress(ws, tracker):
     return changed
 
 
-def queue(prompt, client_id="character-studio", timeout=7200, on_progress=None):
-    ensure(rt.JOBS / "comfy.log")
+def queue(prompt, client_id="character-studio", timeout=7200, on_progress=None, cancel=None, on_id=None):
+    ensure(rt.JOBS / "comfy.log", cancel)
+    if _stopped(cancel):
+        raise rt.Cancelled()
     tracker = RunProgress(prompt)
     if on_progress:
         on_progress(*tracker.snapshot())
@@ -227,9 +264,17 @@ def queue(prompt, client_id="character-studio", timeout=7200, on_progress=None):
         with urllib.request.urlopen(req, timeout=60) as res:
             prompt_id = json.loads(res.read().decode("utf-8"))["prompt_id"]
         tracker.prompt_id = prompt_id
+        if on_id:
+            on_id(prompt_id)
+        if _stopped(cancel):
+            cancel_prompt(prompt_id)
+            raise rt.Cancelled()
         deadline = time.time() + timeout
         last_history = 0.0
         while time.time() < deadline:
+            if _stopped(cancel):
+                cancel_prompt(prompt_id)
+                raise rt.Cancelled()
             if sock is not None:
                 try:
                     if _drain_progress(sock, tracker) and on_progress:
@@ -244,6 +289,9 @@ def queue(prompt, client_id="character-studio", timeout=7200, on_progress=None):
                     history = json.loads(res.read().decode("utf-8"))
                 entry = history.get(prompt_id)
                 if entry:
+                    if _stopped(cancel):
+                        cancel_prompt(prompt_id)
+                        raise rt.Cancelled()
                     status = (entry.get("status") or {}).get("status_str")
                     if status == "error":
                         raise RuntimeError("ComfyUI reported an error for this step")

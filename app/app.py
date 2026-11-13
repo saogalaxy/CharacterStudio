@@ -1,5 +1,6 @@
 """Character Studio window and job API. New file, not a patch of the old server."""
 import argparse
+import os
 import sys
 import threading
 from pathlib import Path
@@ -70,7 +71,19 @@ async def job_run(request):
     step = request.match_info["step"]
     if step not in STEPS:
         raise web.HTTPBadRequest(text=f"unknown step {step}")
-    return web.json_response(studio.run(_job(request), step))
+    payload = {}
+    if request.body_exists:
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+    return web.json_response(studio.run(_job(request), step, payload))
+
+
+async def job_stop(request):
+    return web.json_response(studio.stop(_job(request)))
 
 
 async def job_upload(request):
@@ -187,6 +200,7 @@ def make_app():
     app.router.add_get("/api/jobs/{job}", job_state)
     app.router.add_delete("/api/jobs/{job}", job_delete)
     app.router.add_post("/api/jobs/{job}/run/{step}", job_run)
+    app.router.add_post("/api/jobs/{job}/stop", job_stop)
     app.router.add_post("/api/jobs/{job}/upload/{step}", job_upload)
     app.router.add_post("/api/jobs/{job}/tpose-settings", tpose_settings)
     app.router.add_post("/api/jobs/{job}/mesh-settings", mesh_settings)
@@ -206,6 +220,22 @@ def serve(port):
     web.run_app(make_app(), host="127.0.0.1", port=port, print=None)
 
 
+def _on_window_closed():
+    # The X button closes the WebView window, then pywebview waits for
+    # WebView2 to finish shutting down. That wait often never returns, so
+    # pythonw.exe and the API on port 8765 stay up. End them here.
+    try:
+        studio.stop_for_exit()
+    except Exception:
+        pass
+    try:
+        from pipeline.runtime import kill_descendants
+        kill_descendants()
+    except Exception:
+        pass
+    os._exit(0)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--headless", action="store_true")
@@ -216,14 +246,17 @@ def main():
         return
     threading.Thread(target=serve, args=(args.port,), daemon=True).start()
     import webview
-    webview.create_window(
+    window = webview.create_window(
         "Character Studio",
         f"http://127.0.0.1:{args.port}/",
         width=1500,
         height=950,
         min_size=(1100, 700),
     )
-    webview.start()
+    window.events.closed += _on_window_closed
+    icon = Path(__file__).resolve().parents[1] / "CharacterStudio.ico"
+    webview.start(icon=str(icon) if icon.is_file() else None)
+    _on_window_closed()
 
 
 if __name__ == "__main__":

@@ -62,6 +62,65 @@ def kill_tree(proc):
                        creationflags=NO_WINDOW)
 
 
+def child_pids(parent):
+    """Direct child process ids. Toolhelp, because wmic is gone on current Windows."""
+    import ctypes
+    from ctypes import wintypes
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+
+    class PROCESSENTRY32W(ctypes.Structure):
+        _fields_ = [
+            ("dwSize", wintypes.DWORD),
+            ("cntUsage", wintypes.DWORD),
+            ("th32ProcessID", wintypes.DWORD),
+            ("th32DefaultHeapID", ctypes.c_void_p),
+            ("th32ModuleID", wintypes.DWORD),
+            ("cntThreads", wintypes.DWORD),
+            ("th32ParentProcessID", wintypes.DWORD),
+            ("pcPriClassBase", wintypes.LONG),
+            ("dwFlags", wintypes.DWORD),
+            ("szExeFile", wintypes.WCHAR * 260),
+        ]
+
+    kernel.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    kernel.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
+    kernel.Process32FirstW.argtypes = [wintypes.HANDLE, ctypes.POINTER(PROCESSENTRY32W)]
+    kernel.Process32FirstW.restype = wintypes.BOOL
+    kernel.Process32NextW.argtypes = [wintypes.HANDLE, ctypes.POINTER(PROCESSENTRY32W)]
+    kernel.Process32NextW.restype = wintypes.BOOL
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel.CloseHandle.restype = wintypes.BOOL
+
+    snap = kernel.CreateToolhelp32Snapshot(0x00000002, 0)
+    if snap is None or snap == wintypes.HANDLE(-1).value:
+        raise OSError("could not list processes")
+    found = []
+    try:
+        entry = PROCESSENTRY32W()
+        entry.dwSize = ctypes.sizeof(PROCESSENTRY32W)
+        ok = kernel.Process32FirstW(snap, ctypes.byref(entry))
+        parent = int(parent)
+        while ok:
+            if entry.th32ParentProcessID == parent:
+                found.append(int(entry.th32ProcessID))
+            ok = kernel.Process32NextW(snap, ctypes.byref(entry))
+    finally:
+        kernel.CloseHandle(snap)
+    return found
+
+
+def kill_descendants():
+    """End processes this app started (ComfyUI, Blender, the WebView browser)."""
+    try:
+        pids = child_pids(os.getpid())
+    except OSError:
+        return
+    for pid in pids:
+        subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True,
+                       creationflags=NO_WINDOW, timeout=5)
+
+
 def _wmic_comfy_pids(needle):
     """PIDs of ComfyUI main.py processes whose command line contains needle."""
     needle = str(needle).replace("/", "\\").lower()

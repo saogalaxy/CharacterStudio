@@ -5,6 +5,7 @@ or a joints dict. Shoulder, hip, and ankle persist only as joints.
 A pose edit clears the skeleton check, the rig, and the animations.
 """
 import json
+import random
 import shutil
 import subprocess
 import threading
@@ -24,6 +25,20 @@ ORDER = {name: i for i, name in enumerate(STEPS)}
 
 def _now():
     return time.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _fresh_output(folder, pattern, before, timeout=20):
+    """A file this run wrote. An older picture for another mode does not count."""
+    deadline = time.time() + timeout
+    while True:
+        found = desk.newest(folder, pattern)
+        if found is not None:
+            previous = before.get(found.resolve())
+            if previous is None or found.stat().st_mtime > previous + 1e-4:
+                return found
+        if time.time() >= deadline:
+            return None
+        time.sleep(0.4)
 
 
 def _slug(name):
@@ -167,10 +182,21 @@ class Job:
         }
 
 
+class _Active:
+    """One T-pose or mesh run the Stop button can cancel."""
+
+    def __init__(self, step):
+        self.step = step
+        self.cancel = threading.Event()
+        self.prompt_id = None
+
+
 class Studio:
     def __init__(self):
         rt.JOBS.mkdir(parents=True, exist_ok=True)
         self.jobs = {}
+        self._runs = {}
+        self._lock = threading.Lock()
         for folder in sorted(p for p in rt.JOBS.iterdir() if p.is_dir()):
             if (folder / "job.json").is_file():
                 job = Job(folder)
@@ -193,6 +219,12 @@ class Studio:
             raise KeyError(ident)
         return job
 
+    def stop_for_exit(self):
+        for job in list(self.jobs.values()):
+            for step in STEPS:
+                if job.meta["steps"].get(step, {}).get("state") == "running":
+                    job.set_step(step, state="error", message="stopped because the app closed", finished=_now())
+
     def delete(self, ident):
         job = self.get(ident)
         running = next((s for s in STEPS if job.meta["steps"][s].get("state") == "running"), None)
@@ -208,23 +240,43 @@ class Studio:
         if folder.exists():
             raise RuntimeError("could not remove the job folder")
 
-    def run(self, job, step):
+    def run(self, job, step, payload=None):
         if step not in STEPS:
             raise ValueError(f"unknown step {step}")
         if job.meta["steps"][step].get("state") == "running":
             return job.state()
-        threading.Thread(target=self._execute, args=(job, step), daemon=True).start()
+        if step == "tpose" and isinstance(payload, dict) and payload.get("method"):
+            self.set_tpose_settings(job, payload)
+        run = _Active(step) if step in ("tpose", "mesh") else None
+        if run is not None:
+            self._runs[job.meta["id"]] = run
+        held = dict(job.meta.get("tpose_settings") or {}) if step == "tpose" else None
+        threading.Thread(target=self._execute, args=(job, step, run, held), daemon=True).start()
         return job.state()
 
-    def _execute(self, job, step):
+    def stop(self, job):
+        prompt_id = None
+        with self._lock:
+            run = self._runs.get(job.meta["id"])
+            if run is None or run.step not in ("tpose", "mesh"):
+                return job.state()
+            run.cancel.set()
+            prompt_id = run.prompt_id
+            if job.meta["steps"].get(run.step, {}).get("state") == "running":
+                job.set_step(run.step, state="running", message="stopping")
+        if prompt_id:
+            desk.cancel_prompt(prompt_id)
+        return job.state()
+
+    def _execute(self, job, step, run=None, held=None):
         job.set_step(step, state="running", message=f"running {step}", started=_now())
         try:
             if step == "source":
                 raise RuntimeError("source is an upload — choose an image")
             if step == "tpose":
-                self._tpose(job)
+                self._tpose(job, run, held)
             elif step == "mesh":
-                self._mesh(job)
+                self._mesh(job, run)
             elif step == "markers":
                 self._markers(job)
             elif step == "skeleton":
@@ -238,14 +290,37 @@ class Studio:
                     motions.write_settings(job.dir, motions.fresh_settings())
                 job.set_step("animations", state="done", message="motions ready")
                 return
-            job.set_step(step, state="done", message=job.meta["steps"][step].get("message") or "done", finished=_now())
+            with self._lock:
+                job.set_step(step, state="done", message=job.meta["steps"][step].get("message") or "done", finished=_now())
+        except rt.Cancelled:
+            with self._lock:
+                self._mark_stopped(job, step)
         except Exception as exc:
             job.set_step(step, state="error", message=str(exc), finished=_now())
+        finally:
+            current = self._runs.get(job.meta["id"])
+            if current is not None and current is run:
+                self._runs.pop(job.meta["id"], None)
 
-    def _report_progress(self, job, step):
+    def _mark_stopped(self, job, step):
+        kept = job.path(step).is_file() and (step != "mesh" or job.path("check").is_file())
+        job.set_step(step, state="done" if kept else "empty", message="stopped", finished=_now())
+        job.meta["steps"][step].pop("progress", None)
+        job.save()
+
+    def _remember_prompt(self, run, prompt_id):
+        if run is None:
+            return
+        run.prompt_id = prompt_id
+        if run.cancel.is_set():
+            desk.cancel_prompt(prompt_id)
+
+    def _report_progress(self, job, step, run=None):
         last = {"stage": None, "progress": None, "at": 0.0}
 
         def report(stage, progress):
+            if run is not None and run.cancel.is_set():
+                return
             progress = round(float(progress), 3)
             now = time.time()
             same = stage == last["stage"] and last["progress"] is not None and abs(progress - last["progress"]) < 0.005
@@ -257,47 +332,74 @@ class Studio:
         report("waiting on ComfyUI", 0)
         return report
 
-    def _tpose(self, job):
-        settings = tpose.settings_from(job.meta.get("tpose_settings"))
-        report = self._report_progress(job, "tpose")
-        image = desk.upload_image(job.path("source"))
+    def _tpose(self, job, run=None, held=None):
+        settings = tpose.settings_from(held or job.meta.get("tpose_settings"))
+        report = self._report_progress(job, "tpose", run)
+        cancel = None if run is None else run.cancel
+        prefix = f"studio_{job.meta['id']}_tpose_{settings['method']}"
+        folder = rt.COMFY / "output"
+        before = {}
+        if folder.is_dir():
+            for path in folder.glob(prefix + "*.png"):
+                before[path.resolve()] = path.stat().st_mtime
+        image = desk.upload_image(job.path("source"), cancel)
         built = tpose.build_prompt(
             image, method=settings["method"], prompt=settings["prompt"],
-            filename_prefix=f"studio_{job.meta['id']}_tpose",
+            seed=random.randrange(1, 2**31 - 1),
+            filename_prefix=prefix,
         )
         client = built.get("client_id") or f"character-studio-{uuid.uuid4().hex}"
-        desk.queue(built["prompt"], client, timeout=1800, on_progress=report)
-        found = desk.newest(rt.COMFY / "output", f"studio_{job.meta['id']}_tpose*.png")
+        desk.queue(
+            built["prompt"], client, timeout=1800, on_progress=report, cancel=cancel,
+            on_id=lambda prompt_id: self._remember_prompt(run, prompt_id),
+        )
+        found = _fresh_output(folder, prefix + "*.png", before)
         if found is None:
             raise RuntimeError("T-pose image was not written")
         shutil.copyfile(found, job.path("tpose"))
         job.clear_after("tpose")
-        job.set_step("tpose", state="running", message="T-pose ready")
+        job.set_step("tpose", state="running", message="T-pose ready", method=settings["method"])
 
-    def _mesh(self, job):
+    def _mesh(self, job, run=None):
         settings = mesh.settings_from(job.meta.get("mesh_settings"))
         seed = mesh.resolve_seed(settings)
         settings["seed_used"] = seed
         job.meta["mesh_settings"] = settings
-        report = self._report_progress(job, "mesh")
-        image = desk.upload_image(job.path("tpose"))
+        job.save()
+        report = self._report_progress(job, "mesh", run)
+        cancel = None if run is None else run.cancel
+        image = desk.upload_image(job.path("tpose"), cancel)
         prompt = mesh.build(image, target_tris=settings["target_tris"], seed=seed)
-        desk.queue(prompt, f"character-studio-{uuid.uuid4().hex}", timeout=7200, on_progress=report)
+        desk.queue(
+            prompt, f"character-studio-{uuid.uuid4().hex}", timeout=7200, on_progress=report,
+            cancel=cancel, on_id=lambda prompt_id: self._remember_prompt(run, prompt_id),
+        )
         found, _stage = mesh.pick_for_rig(rt.COMFY / "output")
         if found is None:
             raise RuntimeError("mesh was not written")
-        shutil.copyfile(found, job.path("mesh"))
-        report("mesh check", 1)
-        self._check_mesh(job)
+        incoming = job.dir / "mesh.incoming.glb"
+        check_incoming = job.dir / "mesh_check.incoming.json"
+        try:
+            shutil.copyfile(found, incoming)
+            report("mesh check", 1)
+            self._check_mesh(job, incoming, check_incoming, cancel)
+        finally:
+            incoming.unlink(missing_ok=True)
+            check_incoming.unlink(missing_ok=True)
         job.clear_after("mesh")
         job.set_step("mesh", state="running", message="mesh check passed")
 
-    def _check_mesh(self, job):
+    def _check_mesh(self, job, source=None, check_path=None, cancel=None):
+        mesh_path = source or job.path("mesh")
+        check_path = check_path or job.path("check")
         log = job.dir / "logs" / "mesh_check.txt"
         log.parent.mkdir(exist_ok=True)
-        code = rt.blender("check_mesh.py", [str(job.path("mesh")), str(job.path("check"))], log, None, 600)
-        if code != 0 or not job.path("check").is_file():
+        code = rt.blender("check_mesh.py", [str(mesh_path), str(check_path)], log, cancel, 600)
+        if code != 0 or not Path(check_path).is_file():
             raise RuntimeError("mesh check failed")
+        if source is not None:
+            shutil.copyfile(mesh_path, job.path("mesh"))
+            shutil.copyfile(check_path, job.path("check"))
 
     def _markers(self, job):
         log = job.dir / "logs" / "markers.txt"
@@ -417,7 +519,8 @@ class Studio:
         if envelopes is not None:
             stored = dict(det.get("envelopes") or {})
             for key, value in envelopes.items():
-                if key not in bodymath.ENVELOPE_BONES:
+                allowed = bodymath.ENVELOPE_BONES + bodymath.ENVELOPE_OVERRIDE_BONES
+                if key not in allowed:
                     continue
                 scale = float(value)
                 if not 0.5 <= scale <= 2:
