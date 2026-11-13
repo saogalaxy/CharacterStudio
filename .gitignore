@@ -1,6 +1,7 @@
 runtime/
 jobs/
 fallback/
+dist/
 __pycache__/
 *.pyc
 node_modules/

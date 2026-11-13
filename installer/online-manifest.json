@@ -1,0 +1,12 @@
+{
+  "label": "Character Studio Online Installer",
+  "description": "Small Git-friendly setup. Downloads the runtime (ComfyUI, Blender, models) then installs.",
+  "version": "1.0.0",
+  "runtimeBundleUrl": "",
+  "runtimeBundleFileName": "CharacterStudio-Runtime.zip",
+  "notes": [
+    "Set runtimeBundleUrl to an HTTPS link for CharacterStudio-Runtime.zip (built by Publish-RuntimeBundle.ps1).",
+    "App code and library come from this Git repo next to the installer.",
+    "For a USB/full copy with no download, use the Offline package instead."
+  ]
+}
