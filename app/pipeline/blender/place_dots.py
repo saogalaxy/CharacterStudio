@@ -29,6 +29,17 @@ det["joints_auto"] = {k: list(v) for k, v in det["joints"].items()}
 det["envelopes"] = {}
 det["tags"] = {}
 det["fingers"] = "five"
+# Re-placing the dots must not wipe the user's rig work: jiggle chains,
+# tissue pivots, envelopes, tags, and finger settings survive; only the
+# dots, joints, and surface sample are re-measured.
+if os.path.isfile(out_json):
+    try:
+        old = json.load(open(out_json, encoding="utf-8"))
+    except ValueError:
+        old = {}
+    for key in ("jiggle", "tissue", "envelopes", "tags", "finger_tips", "fingers"):
+        if key in old:
+            det[key] = old[key]
 sample = cloud[::max(1, len(cloud) // 60000)]
 bad_m, bad_j = listed_off(sample, det)
 det["off_body"] = bad_m

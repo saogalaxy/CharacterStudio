@@ -569,6 +569,28 @@ def paint(body, arm, height, det, secondary=()):
                         finger_sum += w / total
                     if names[i] == "head":
                         head_sum += w / total
+    # Blur every deform group except finger digits: spreads ownership across
+    # the boundary instead of stepping it in one vertex. Fingers keep crisp
+    # weights; digit bones would wash out otherwise. (The smooth operator
+    # needs a viewport context, so this is the same math in numpy.)
+    edge_flat = np.empty(len(body.data.edges) * 2, dtype=np.int64)
+    body.data.edges.foreach_get("vertices", edge_flat)
+    edge_a, edge_b = edge_flat[0::2], edge_flat[1::2]
+    degree = np.bincount(np.concatenate((edge_a, edge_b)), minlength=len(coords))
+    for name in names:
+        if name.startswith(("index_", "middle_", "ring_", "pinky_", "thumb_")):
+            continue
+        w = np.zeros(len(coords), dtype=np.float64)
+        for vi, wv in weights[name]:
+            w[vi] = wv
+        for _ in range(2):
+            s = np.zeros(len(coords), dtype=np.float64)
+            np.add.at(s, edge_a, w[edge_b])
+            np.add.at(s, edge_b, w[edge_a])
+            avg = np.divide(s, degree, out=np.zeros_like(s), where=degree > 0)
+            w = np.where(degree > 0, 0.5 * w + 0.5 * avg, w)
+        hit = np.nonzero(w > 0)[0]
+        weights[name] = list(zip(hit.tolist(), w[hit].tolist()))
     for name, pairs in weights.items():
         bins = {}
         for vi, w in pairs:

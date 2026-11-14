@@ -190,13 +190,25 @@ head owned head *plus torso*. Measured on the bind: 39,005 back
 verts 53–129 mm from the head joint. New veto in `paint` — below
 the skull line and farther than 0.03h from the head segment, head
 cannot win (face box exempt). Rebind: head-owned back verts below
-the skull line are now ZERO. Tears 19/22/24/22/52, worst gap moved
-to the user-dragged right shoulder (clavicle_r, edited this same
-session, ~50 mm) — the cape is gone, the shoulder seam being
-actively repositioned is now the worst spot. Note: envelope edits
-invalidate the bind and drop `animations.json`, so the jiggle
-switch is OFF again and the Walk fit is back to default — re-tick
-and re-fit before judging jiggle.
+the skull line are now ZERO. (Correction: the "19/22/24/22/52"
+quoted here earlier belonged to the previous tissue-fix bind. The
+guard-only bind measured 20/20/31/18/59 with gaps to ~50 mm at the
+edited shoulder — same session as the user's clavicle drags and
+envelope experiments, so not a clean A/B.) Worst gap moved to the
+user-dragged right shoulder (clavicle_r) — the cape is gone, the
+shoulder seam being actively repositioned is now the worst spot.
+Blur the overlap, 2026-11-14: nearest-bone vote was fine; the veto
+cliffs tore. Two neighbor-averaging steps per deform group
+(fingers excluded; the viewport smooth operator fails headless, so
+numpy). Torn-edge audit: mean top-share 0.59, nearly all tears on
+shared edges. Rebind: worst ratio 69→21, worst gaps 50→12–17 mm;
+counts rose (mild stretches cross the 2.5 bar) while severity more
+than halved. place_dots no longer wipes jiggle/tissue/envelopes on
+re-placement (that is how the chains were lost); J chains
+re-marked and the Walk fit restored through the API. Note:
+envelope edits invalidate the bind and drop `animations.json`, so
+re-tick the jiggle switch and re-fit after any envelope change
+before judging jiggle.
 
 Estimate paint + direction arrows, 2026-11-14: Rig gets an
 "Estimate paint" tick (rough nearest-segment preview from the live
