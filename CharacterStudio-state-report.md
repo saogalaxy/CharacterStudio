@@ -96,6 +96,51 @@ motion. There is no run recorded here yet.
   and record the switch on, then off, then on with the chain
   cleared. The bind gate is still FAIL, so the mesh still tears
   under the jiggle. Judge the jiggle itself, not the bind.
+- Superseded: the head-chain demo moved almost nothing (0.7 cm at
+  the crown). Real tissue bones landed below; see "Tissue bones".
+
+## Tissue bones (breast + butt), 2026-11-13
+
+The rig had no hair, cloth, or tissue bones, so jiggle could only
+swing body bones. Every bind now adds four deform bones in
+`wear.py`: `breast_l`/`breast_r` under `spine_03`,
+`glute_l`/`glute_r` under `pelvis`, placed from the mesh surface
+(front band for the chest, back band for the butt, side-gated left
+vs right). `paint` moves weight off the parent onto each new bone
+with a Gaussian falloff around its pivot, capped at 0.85 and
+normalized, so the surface stays attached. A rigid child deforms
+exactly like its parent until something rotates it, so unmarked
+jobs bind and play as before. Written to `rig/extra_bones.json`;
+the Rig list shows the four rows with the J toggle, and the
+`markers` jiggle validator accepts them. `state()` exposes
+`extra_bones`.
+
+`naga_hd_caa97a` re-bound 23:00 with this code (68 s):
+`rigged_animated.glb` has 70 skin joints, and the four new bones
+own real weight (breasts ~240k verts each, glutes ~125k each on a
+1.44M-vert mesh). Gate is still FAIL: tears 27/32/28/32/78 vs
+20/23/26/26/56 before, worst ratio slightly down (54.8–56.8× vs
+52.8–59.1×), worst absolute gap flat (~31–36 mm). The count rose
+because the moved weight re-owned sub-mm edges (tissue bones touch
+40 of the 78 sit@20 torn edges); the mesh did not get worse in
+millimetres. `logs/rig.txt` is stale (20:17 content, no
+`secondary` line) — the artifacts are the record.
+
+Jiggle measured in Node on the real naga GLB, Walk, 4 s, jiggle run
+vs plain run: breasts swing 7.9°, glutes 3.1°, parents unmoved
+(0.03°), chains independent. `head` is off the table as a demo.
+
+Armed on `naga_hd_caa97a` through the API: `jiggle` is
+`["breast_l", "breast_r", "glute_l", "glute_r"]`, switch on, Walk
+selected, `rig_stale` false. The desktop window has not been
+reopened since the rebind.
+
+Also fixed while measuring: the spring compounded on bones the
+clip does not animate (the mixer never fully overwrites them), so
+a marked `spine_03` spun the left index finger 180°. `_jiggleStep`
+now snaps non-animated bones back to the clip pose before applying
+the frame's swing (`_clipMovesBone`). Worst deviation on the old
+test is 17.8° instead of 180°.
 
 ## Blender bones drew two skeletons, fixed 2026-11-13
 

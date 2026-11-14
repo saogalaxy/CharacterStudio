@@ -60,6 +60,10 @@ const AF_VIEW = {
   hand_tip_r: "Fingertip",
   thigh_l: "Hip",
   thigh_r: "Hip",
+  breast_l: "Breast",
+  breast_r: "Breast",
+  glute_l: "Butt",
+  glute_r: "Butt",
   calf_l: "Knee",
   calf_r: "Knee",
   foot_l: "Ankle",
@@ -74,6 +78,10 @@ const PLACE = {
   spine_01: "Low belly, just above the hips — keep toward the back of the torso, not on the front wall",
   spine_02: "Mid torso / ribcage — about 60–70% back from the front so the sides stay full",
   spine_03: "Chest / upper spine — sit deep in the torso; too far forward collapses the chest",
+  breast_l: "Left breast tissue — added at bind, no dot to place; mark J on Rig to jiggle it",
+  breast_r: "Right breast tissue — added at bind, no dot to place; mark J on Rig to jiggle it",
+  glute_l: "Left butt tissue — added at bind, no dot to place; mark J on Rig to jiggle it",
+  glute_r: "Right butt tissue — added at bind, no dot to place; mark J on Rig to jiggle it",
   neck_base: "Base of the neck between the collarbones, slightly toward the back of the neck",
   head: "Head pivot at jaw / ear height, inside the skull",
   head_top: "Top of the head, centered over the skull vault",
@@ -742,6 +750,8 @@ export class Stage {
         this._jiggleBones.push(bone);
         this._jiggleState.set(bone.name, {
           swing: new THREE.Quaternion(),
+          base: new THREE.Quaternion(),
+          moves: undefined,
           angle: new THREE.Vector3(),
           vel: new THREE.Vector3(),
           prevParent: new THREE.Quaternion(),
@@ -759,6 +769,20 @@ export class Stage {
       state.vel.set(0, 0, 0);
       state.ready = false;
     }
+  }
+
+  // True when the clip's own track actually moves this bone. A bone the clip
+  // leaves alone keeps whatever quaternion it has, so the swing would stick.
+  _clipMovesBone(name) {
+    const clip = this.current && this.current.getClip ? this.current.getClip() : null;
+    if (!clip) return true;
+    const track = clip.tracks.find((t) => t.name === `${name}.quaternion`);
+    if (!track || track.values.length < 8) return false;
+    const v = track.values;
+    for (let i = 4; i < v.length; i++) {
+      if (Math.abs(v[i] - v[i % 4]) > 1e-5) return true;
+    }
+    return false;
   }
 
   // Spring-bone secondary motion. Runs after the clip and the fit are applied,
@@ -786,9 +810,15 @@ export class Stage {
       parent.getWorldQuaternion(parentNow);
       if (!state.ready) {
         state.prevParent.copy(parentNow);
+        state.moves = this._clipMovesBone(bone.name);
+        state.base.copy(bone.quaternion);
         state.ready = true;
         continue;
       }
+      // The mixer does not always fully overwrite a bone the clip leaves
+      // alone, so last frame's swing can still be on it. Put the clip's own
+      // pose back for those bones; the swing is applied fresh below.
+      if (!state.moves) bone.quaternion.copy(state.base);
       bone.getWorldQuaternion(boneNow);
       prevInv.copy(state.prevParent).invert();
       delta.copy(parentNow).multiply(prevInv);

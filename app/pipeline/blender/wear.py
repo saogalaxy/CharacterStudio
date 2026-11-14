@@ -42,6 +42,15 @@ DROP = {
     "mitten": ("pinky_", "ring_", "middle_", "index_", "thumb_"),
 }
 
+# Bones the jiggle mode exists for: name, parent, side (+1 is the _l side), and
+# which surface of the body it drives.
+SECONDARY = (
+    ("breast_l", "spine_03", 1.0, "front"),
+    ("breast_r", "spine_03", -1.0, "front"),
+    ("glute_l", "pelvis", 1.0, "back"),
+    ("glute_r", "pelvis", -1.0, "back"),
+)
+
 CHAIN = {
     "root": ("root", "pelvis"),
     "pelvis": ("pelvis", "spine_01"),
@@ -254,7 +263,104 @@ def fit_bones(arm, joints, height, zmin, fingers, snap, tips=None):
     bpy.ops.object.mode_set(mode="OBJECT")
 
 
-def paint(body, arm, height, det):
+def add_secondary_bones(arm, body, joints, height):
+    """Breast and glute bones, so jiggle physics moves tissue, not a body bone.
+
+    Each bone sits inside the surface it drives and pivots at the chest wall or
+    the pelvis, and ``paint`` weights the skin over it. A rigid child of
+    spine_03/pelvis deforms exactly like its parent until something rotates it,
+    so an unmarked job binds and plays as before.
+    """
+    coords = np.array([(body.matrix_world @ v.co)[:] for v in body.data.vertices], dtype=np.float64)
+    if not len(coords):
+        return []
+    fwd = _faces_forward(arm, height)
+    zs = coords[:, 2]
+
+    def axis_of(key, axis, fallback):
+        point = joints.get(key)
+        if point and len(point) > axis:
+            return float(point[axis])
+        return float(fallback)
+
+    spine_z = axis_of("spine_03", 2, np.percentile(zs, 62))
+    spine_y = axis_of("spine_03", 1, np.median(coords[:, 1]))
+    neck_z = axis_of("neck_01", 2, axis_of("head", 2, np.percentile(zs, 76)))
+    pelvis_z = axis_of("pelvis", 2, np.percentile(zs, 52))
+    pelvis_y = axis_of("pelvis", 1, np.median(coords[:, 1]))
+    span = max(neck_z - spine_z, 0.02 * height)
+    middle = 0.01 * height
+    made = []
+    for name, parent_name, hand, face in SECONDARY:
+        if face == "front":
+            band = (zs > spine_z + 0.25 * span) & (zs < neck_z - 0.05 * span)
+            base_y = spine_y
+            out = fwd * (coords[:, 1] - base_y)
+            sigma = 0.045 * height
+            room = 0.24 * height
+        else:
+            band = (zs > pelvis_z - 0.14 * height) & (zs < pelvis_z + 0.05 * height)
+            base_y = pelvis_y
+            out = -fwd * (coords[:, 1] - base_y)
+            sigma = 0.05 * height
+            room = 0.22 * height
+        mine = band & (np.abs(coords[:, 0]) < room) & (coords[:, 0] * hand > middle) & (out > 0.01 * height)
+        if not mine.any():
+            continue
+        reach = float(np.max(out[mine]))
+        shell = coords[mine & (out > 0.55 * reach)]
+        if not len(shell):
+            continue
+        # Pivot 40% of the way out from the body centre, so the surface swings
+        # around the chest wall or pelvis instead of sliding off it.
+        cy = float(shell[:, 1].mean())
+        head = Vector((float(shell[:, 0].mean()), base_y + (cy - base_y) * 0.4, float(shell[:, 2].mean())))
+        reach_out = 0.06 * height
+        if face == "front":
+            tail = head + Vector((0.0, fwd * reach_out, 0.015 * height))
+        else:
+            tail = head + Vector((0.0, -fwd * reach_out, -0.010 * height))
+        made.append({
+            "name": name,
+            "parent": parent_name,
+            "hand": hand,
+            "place": face,
+            "head": head,
+            "tail": tail,
+            "center": np.array([head.x, head.y, head.z], dtype=np.float64),
+            "sigma": sigma,
+        })
+    if not made:
+        return []
+    bpy.context.view_layer.objects.active = arm
+    bpy.ops.object.mode_set(mode="EDIT")
+    eb = arm.data.edit_bones
+    for rec in made:
+        bone = eb.get(rec["name"])
+        if bone is None:
+            bone = eb.new(rec["name"])
+        bone.head = rec["head"]
+        bone.tail = rec["tail"]
+        bone.use_connect = False
+        bone.use_deform = True
+        bone.parent = eb.get(rec["parent"])
+    bpy.ops.object.mode_set(mode="OBJECT")
+    return made
+
+
+def _faces_forward(arm, height):
+    """+1 when the character faces +Y. The toes point forward; the chin is the fallback."""
+    for name in ("foot_l", "foot_r"):
+        bone = arm.data.bones.get(name)
+        if bone is None:
+            continue
+        step = bone.tail_local.y - bone.head_local.y
+        if abs(step) > 0.02 * height:
+            return 1.0 if step > 0 else -1.0
+    return 1.0
+
+
+def paint(body, arm, height, det, secondary=()):
     bones = [b for b in arm.data.bones if b.use_deform and "_leaf" not in b.name and not b.name.startswith(("ik_", "socket"))]
     mw = arm.matrix_world
     heads = np.array([(mw @ b.head_local)[:] for b in bones], dtype=np.float64)
@@ -290,6 +396,10 @@ def paint(body, arm, height, det):
     side = 0.06 * height
     collar_r = 0.035 * height
     coords = np.array([(body.matrix_world @ v.co)[:] for v in body.data.vertices], dtype=np.float64)
+    # Tissue bones never win the nearest-bone search; the falloff below feeds
+    # them instead, so the region stays predictable.
+    tissue = [(index[r["name"]], r["center"], float(r["sigma"]), float(r.get("hand", 1.0)), r["name"])
+              for r in secondary if r["name"] in index]
     groups = {}
     for n in names:
         groups[n] = body.vertex_groups.new(name=n)
@@ -307,6 +417,8 @@ def paint(body, arm, height, det):
         for local, vert in enumerate(pts):
             vi = start + local
             d = dist[local].copy()
+            for tissue_i, _center, _sigma, _hand, _tname in tissue:
+                d[tissue_i] = 1e6
             if neck_z is not None and head_i is not None and vert[2] < neck_z - 0.02 * height:
                 d[head_i] = 1e6
             # Hair / crown above the head joint — neck must not own these verts.
@@ -385,6 +497,30 @@ def paint(body, arm, height, det):
             chosen.sort(key=lambda item: -item[1])
             chosen = chosen[:4]
             total = sum(w for _, w in chosen) or 1.0
+            # Hand weight to the tissue bones. Each one takes a Gaussian share
+            # around its pivot and only on its own side, scaling down whatever
+            # the body bones claimed. The surface stays attached because the
+            # weight moves off the parent instead of being added.
+            steal = []
+            for tissue_i, center, tsig, thand, _tname in tissue:
+                if vert[0] * thand <= 0:
+                    continue
+                delta = vert - center
+                w = float(np.exp(-float(delta @ delta) / (2.0 * tsig * tsig)))
+                if w >= 0.01:
+                    steal.append((tissue_i, w))
+            if steal:
+                take = min(sum(w for _, w in steal), 0.85)
+                keep = 1.0 - take
+                norm = take / sum(w for _, w in steal)
+                merged = [(i, w / total * keep) for i, w in chosen]
+                merged += [(i, w * norm) for i, w in steal]
+                merged.sort(key=lambda item: -item[1])
+                merged = merged[:4]
+                mtotal = sum(w for _, w in merged) or 1.0
+                for i, w in merged:
+                    weights[names[i]].append((vi, w / mtotal))
+                    continue
             for i, w in chosen:
                 weights[names[i]].append((vi, w / total))
                 if names[i].startswith(("index_", "middle_", "ring_", "pinky_", "thumb_")):
@@ -415,6 +551,7 @@ def paint(body, arm, height, det):
         "tags": tags,
         "finger_weight": round(finger_sum, 1),
         "head_weight": round(head_sum, 1),
+        "secondary": sorted({names[i] for i, _, _, _, _ in tissue}) if tissue else [],
     })
 
 
@@ -772,12 +909,14 @@ def main():
     snap = template_snapshot(arm)
     fingers = det.get("fingers") or "five"
     fit_bones(arm, joints, height, zmin, fingers, snap, det.get("finger_tips") or {})
+    secondary = add_secondary_bones(arm, body, joints, height)
     deform = sum(1 for b in arm.data.bones if b.use_deform)
-    log("skeleton", {"bones": len(arm.data.bones), "source": "mesh2motion", "deform": deform, "fingers": fingers})
+    log("skeleton", {"bones": len(arm.data.bones), "source": "mesh2motion", "deform": deform, "fingers": fingers,
+                     "secondary": [r["name"] for r in secondary]})
     body.parent = arm
     mod = body.modifiers.new("Armature", "ARMATURE")
     mod.object = arm
-    paint(body, arm, height, det)
+    paint(body, arm, height, det, secondary)
     copied = {}
     for clip_id, filename in CLIPS.items():
         path = os.path.join(library, "animations", filename)
@@ -814,6 +953,12 @@ def main():
         json.dump(report, fh, indent=1)
     with open(os.path.join(out_dir, "joints.json"), "w", encoding="utf-8") as fh:
         json.dump(det, fh, indent=1)
+    extra = [{"name": r["name"], "parent": r["parent"], "place": r["place"],
+              "head": [round(float(v), 5) for v in r["head"]],
+              "tail": [round(float(v), 5) for v in r["tail"]]} for r in secondary]
+    with open(os.path.join(out_dir, "extra_bones.json"), "w", encoding="utf-8") as fh:
+        json.dump(extra, fh, indent=1)
+    log("secondary", {"bones": [r["name"] for r in secondary], "file": "extra_bones.json"})
     log("export", {"glb": glb, "bytes": os.path.getsize(glb)})
     print("DONE", gate)
 

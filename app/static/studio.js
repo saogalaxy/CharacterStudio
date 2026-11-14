@@ -1,4 +1,4 @@
-import { Stage, ENVELOPE_BONES, boneLabel, bonePlace, dotColorCss, envelopeColorCss, poseLabel, visibleDots } from "./stage.js?v=bg02";
+import { Stage, ENVELOPE_BONES, boneLabel, bonePlace, dotColorCss, envelopeColorCss, poseLabel, visibleDots } from "./stage.js?v=bg04";
 import { mountPlacementMinimap } from "./placement-minimap.js?v=af75";
 
 const STEPS = [
@@ -295,7 +295,7 @@ function render() {
     };
     bar.appendChild(button);
   });
-  const key = [view, showBones, job.running, job.steps[view]?.message, job.skeleton_seen, job.rig_stale, (job.off_body || []).join(), showEnv, (job.markers?.jiggle || []).join(), job.animations?.jiggle].join("|");
+  const key = [view, showBones, job.running, job.steps[view]?.message, job.skeleton_seen, job.rig_stale, (job.off_body || []).join(), showEnv, (job.markers?.jiggle || []).join(), (job.extra_bones || []).join(), job.animations?.jiggle].join("|");
   if (key !== panelKey) {
     panelKey = key;
     drawPanel();
@@ -559,6 +559,9 @@ function drawRig() {
   mountPlacementMinimap(box);
   if (showBones && job.markers?.joints) {
     const names = visibleDots(job.markers.joints);
+    for (const extra of job.extra_bones || []) {
+      if (!names.includes(extra)) names.push(extra);
+    }
     const chains = new Set(job.markers?.jiggle || []);
     box.appendChild(eyeTools("bone", names));
     const list = document.createElement("div");
@@ -957,6 +960,14 @@ function drawAnimations() {
     jiggleNote.className = "help";
     jiggleNote.textContent = "Spring motion on the chains marked with J on Rig, while a motion plays. Off, the baked clip plays exactly as before. Not written into the exported file.";
     box.appendChild(jiggleNote);
+    const chains = job.markers?.jiggle || [];
+    const chainNote = document.createElement("p");
+    chainNote.className = "help";
+    chainNote.dataset.chains = "1";
+    chainNote.textContent = chains.length
+      ? `Chains marked: ${chains.join(", ")}. The rig has no extra hair or cloth bones, so a chain moves bones the body already has.`
+      : "No chains marked, so nothing will jiggle. Open Rig, find the bone, and press J on its row — that bone and every bone below it become the chain.";
+    box.appendChild(chainNote);
     const note = document.createElement("p");
     note.className = "help";
     note.textContent = "Each color is one bone. Point at a name and that area brightens.";
@@ -1226,7 +1237,7 @@ async function chooseClip(id) {
       body: JSON.stringify({ selected: id }),
     });
     if (job.animations) job.animations.selected = id;
-    panelKey = [view, showBones, job.running, job.steps[view]?.message, job.skeleton_seen, (job.off_body || []).join(), showEnv, (job.markers?.jiggle || []).join(), job.animations?.jiggle].join("|");
+    panelKey = [view, showBones, job.running, job.steps[view]?.message, job.skeleton_seen, (job.off_body || []).join(), showEnv, (job.markers?.jiggle || []).join(), (job.extra_bones || []).join(), job.animations?.jiggle].join("|");
   } catch (err) {
     window.alert(err.message || String(err));
   } finally {

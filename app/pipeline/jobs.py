@@ -180,6 +180,17 @@ class Job:
             det["joints_off_body"] = bad_j
         return det
 
+    def extra_bones(self):
+        """Tissue bones added at bind time (breast/glute). Empty until a rebind."""
+        path = self.dir / "rig" / "extra_bones.json"
+        if not path.is_file():
+            return []
+        try:
+            rows = json.loads(path.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            return []
+        return [str(r.get("name")) for r in rows if isinstance(r, dict) and r.get("name")]
+
     def state(self):
         files = {
             "source": self.path("source").is_file(),
@@ -221,6 +232,7 @@ class Job:
             "markers": det,
             "off_body": off,
             "joints_off_body": joff,
+            "extra_bones": self.extra_bones(),
             "skeleton_seen": seen,
             "rig_stale": stale,
             "animations": anim,
@@ -640,7 +652,7 @@ class Studio:
             # Jiggle chains are runtime-only: they never invalidate the bind.
             if not isinstance(jiggle, dict):
                 raise ValueError("jiggle chains must be a map")
-            known = set((det.get("joints") or {}).keys())
+            known = set((det.get("joints") or {}).keys()) | set(job.extra_bones())
             stored = set(det.get("jiggle") or [])
             for key, value in jiggle.items():
                 name = str(key).strip()
