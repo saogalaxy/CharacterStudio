@@ -125,6 +125,7 @@ async def markers(request):
             moved=body.get("moved"),
             envelopes=body.get("envelopes"),
             tags=body.get("tags"),
+            jiggle=body.get("jiggle"),
             fingers=body.get("fingers"),
             finger_tips=body.get("finger_tips"),
         )
@@ -161,8 +162,13 @@ async def clear_clips(request):
 
 async def export_package(request):
     try:
-        state = studio.export_package(_job(request))
-    except RuntimeError as exc:
+        body = await request.json()
+    except Exception:
+        body = {}
+    formats = body.get("formats") if isinstance(body, dict) else None
+    try:
+        state = studio.export_package(_job(request), formats=formats)
+    except (RuntimeError, ValueError) as exc:
         raise web.HTTPConflict(text=str(exc))
     return web.json_response(state)
 

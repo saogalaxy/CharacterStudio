@@ -70,33 +70,33 @@ const AF_VIEW = {
   toe_r: "Toe tips",
 };
 const PLACE = {
-  pelvis: "Center of the hips, where the legs meet the body",
-  spine_01: "Low on the belly, just above the hips",
-  spine_02: "On the belly, halfway up to the chest",
-  spine_03: "On the chest",
-  neck_base: "At the base of the neck, between the collarbones",
-  head: "On the head, level with the jaw",
-  head_top: "At the top of the head",
-  clavicle_l: "On the left collarbone, from the base of the neck out to the shoulder",
-  clavicle_r: "On the right collarbone, from the base of the neck out to the shoulder",
-  upperarm_l: "On the left shoulder, where the arm leaves the body",
-  upperarm_r: "On the right shoulder, where the arm leaves the body",
-  lowerarm_l: "On the left elbow, at the bend of the arm",
-  lowerarm_r: "On the right elbow, at the bend of the arm",
-  hand_l: "On the left wrist",
-  hand_r: "On the right wrist",
-  hand_tip_l: "At the end of the left fingers",
-  hand_tip_r: "At the end of the right fingers",
-  thigh_l: "On the outside of the left hip",
-  thigh_r: "On the outside of the right hip",
-  calf_l: "On the left knee",
-  calf_r: "On the right knee",
-  foot_l: "On the left ankle",
-  foot_r: "On the right ankle",
-  ball_l: "Across the base of the left toes",
-  ball_r: "Across the base of the right toes",
-  toe_l: "At the tips of the left toes",
-  toe_r: "At the tips of the right toes",
+  pelvis: "Center of the hips where the legs meet the body — pelvic core, slightly behind the front crease",
+  spine_01: "Low belly, just above the hips — keep toward the back of the torso, not on the front wall",
+  spine_02: "Mid torso / ribcage — about 60–70% back from the front so the sides stay full",
+  spine_03: "Chest / upper spine — sit deep in the torso; too far forward collapses the chest",
+  neck_base: "Base of the neck between the collarbones, slightly toward the back of the neck",
+  head: "Head pivot at jaw / ear height, inside the skull",
+  head_top: "Top of the head, centered over the skull vault",
+  clavicle_l: "Left collarbone from the neck base out toward the shoulder",
+  clavicle_r: "Right collarbone from the neck base out toward the shoulder",
+  upperarm_l: "Left shoulder socket where the arm leaves the body, inside the deltoid",
+  upperarm_r: "Right shoulder socket where the arm leaves the body, inside the deltoid",
+  lowerarm_l: "Left elbow at the bend — slight back bias so the arm folds forward",
+  lowerarm_r: "Right elbow at the bend — slight back bias so the arm folds forward",
+  hand_l: "Left wrist crease, not inside the palm",
+  hand_r: "Right wrist crease, not inside the palm",
+  hand_tip_l: "Tips of the left fingers",
+  hand_tip_r: "Tips of the right fingers",
+  thigh_l: "Outside of the left hip / femur head — not on the front hip crease",
+  thigh_r: "Outside of the right hip / femur head — not on the front hip crease",
+  calf_l: "Left knee, slightly forward of the hip-to-ankle line",
+  calf_r: "Right knee, slightly forward of the hip-to-ankle line",
+  foot_l: "Left ankle toward the heel / rear shin",
+  foot_r: "Right ankle toward the heel / rear shin",
+  ball_l: "Base of the left toes (ball of the foot)",
+  ball_r: "Base of the right toes (ball of the foot)",
+  toe_l: "Tips of the left toes",
+  toe_r: "Tips of the right toes",
 };
 const ENDS = new Set(["head_top", "hand_tip_l", "hand_tip_r", "toe_l", "toe_r"]);
 const SIDE = { c: 0xf5c542, l: 0x3d8bfd, r: 0xe23b3b };
@@ -494,6 +494,24 @@ const LINKS = [
 ];
 const MIRROR = { l: "r", r: "l" };
 
+// Axis-angle vector of a quaternion (shortest arc), used by the jiggle springs.
+function swingAxis(q) {
+  let x = q.x;
+  let y = q.y;
+  let z = q.z;
+  let w = q.w;
+  if (w < 0) {
+    x = -x;
+    y = -y;
+    z = -z;
+    w = -w;
+  }
+  const s = Math.hypot(x, y, z);
+  if (s < 1e-8) return new THREE.Vector3();
+  const k = (2 * Math.atan2(s, w)) / s;
+  return new THREE.Vector3(x * k, y * k, z * k);
+}
+
 export class Stage {
   constructor(box) {
     this.box = box;
@@ -518,6 +536,7 @@ export class Stage {
     this.paused = false;
     this.timeScale = 1;
     this.hold = false;
+    this.followCharacter = true;
     this.fit = { hip: 0, arms: 1, legs: 1, arm_space: 0, arm_fwd: 0, turn: 0, leg_space: 0 };
     this.view = "front";
     this.locked = false;
@@ -533,9 +552,17 @@ export class Stage {
     this.dots = {};
     this.bones = null;
     this.boneStyle = "stick";
+    this.boneOverlay = true;
+    this.soloBone = "";
+    this.soloEnv = "";
     this.hiddenBones = new Set();
     this.hiddenEnvs = new Set();
     this._fingerSegs = [];
+    this.jiggleOn = false;
+    this._jiggleRoots = [];
+    this._jiggleKey = "";
+    this._jiggleBones = [];
+    this._jiggleState = new Map();
     this.unlocked = new Set();
     this.sym = true;
     this.fingerTips = null;
@@ -604,6 +631,8 @@ export class Stage {
     this._bind = {};
     this._posed = {};
     this.mode = "empty";
+    this._jiggleBones = [];
+    this._jiggleState = new Map();
     if (this.grid) this.grid.visible = false;
     this.clearOverlay();
   }
@@ -647,6 +676,7 @@ export class Stage {
     this.mode = hold ? "pose" : "play";
     this._syncSkeleton();
     this._syncAnimEnvelopes();
+    this._buildJiggle();
   }
 
   actionName(name) {
@@ -676,7 +706,114 @@ export class Stage {
       this.mixer.update(0);
       this._snapshot();
       this._applyFit();
+      this._resetJiggle();
       this.frameCharacter();
+    }
+  }
+
+  setJiggle(config) {
+    const next = config || {};
+    this.jiggleOn = !!next.enabled;
+    const roots = Array.isArray(next.chains) ? next.chains.map(String) : [];
+    const key = roots.slice().sort().join(",");
+    if (key !== this._jiggleKey) {
+      this._jiggleKey = key;
+      this._jiggleRoots = roots;
+      this._buildJiggle();
+    }
+    if (!this.jiggleOn) this._resetJiggle();
+  }
+
+  // A chain is the marked bone plus every bone below it. Parents come first,
+  // so the springs cascade down the chain while the clip plays.
+  _buildJiggle() {
+    this._jiggleBones = [];
+    this._jiggleState = new Map();
+    if (!this.root) return;
+    const seen = new Set();
+    for (const name of this._jiggleRoots) {
+      const start = this.root.getObjectByName(name);
+      if (!start || !start.isBone) continue;
+      const queue = [start];
+      while (queue.length) {
+        const bone = queue.shift();
+        if (!bone.isBone || seen.has(bone.name)) continue;
+        seen.add(bone.name);
+        this._jiggleBones.push(bone);
+        this._jiggleState.set(bone.name, {
+          swing: new THREE.Quaternion(),
+          angle: new THREE.Vector3(),
+          vel: new THREE.Vector3(),
+          prevParent: new THREE.Quaternion(),
+          ready: false,
+        });
+        for (const child of bone.children) if (child.isBone) queue.push(child);
+      }
+    }
+  }
+
+  _resetJiggle() {
+    for (const state of this._jiggleState.values()) {
+      state.swing.identity();
+      state.angle.set(0, 0, 0);
+      state.vel.set(0, 0, 0);
+      state.ready = false;
+    }
+  }
+
+  // Spring-bone secondary motion. Runs after the clip and the fit are applied,
+  // so the baked clip itself is never modified and no unmarked bone moves.
+  _jiggleStep(dt) {
+    if (!this.jiggleOn || !this.root || !this._jiggleBones.length) return;
+    const step = Math.min(Math.max(dt, 1 / 240), 1 / 24);
+    const stiffness = 18;
+    const damping = 6;
+    const drive = 6;
+    const maxSwing = 0.75;
+    const maxVel = 24;
+    const parentNow = new THREE.Quaternion();
+    const boneNow = new THREE.Quaternion();
+    const boneInv = new THREE.Quaternion();
+    const prevInv = new THREE.Quaternion();
+    const delta = new THREE.Quaternion();
+    const local = new THREE.Quaternion();
+    const axis = new THREE.Vector3();
+    this.root.updateMatrixWorld(true);
+    for (const bone of this._jiggleBones) {
+      const state = this._jiggleState.get(bone.name);
+      const parent = bone.parent;
+      if (!state || !parent) continue;
+      parent.getWorldQuaternion(parentNow);
+      if (!state.ready) {
+        state.prevParent.copy(parentNow);
+        state.ready = true;
+        continue;
+      }
+      bone.getWorldQuaternion(boneNow);
+      prevInv.copy(state.prevParent).invert();
+      delta.copy(parentNow).multiply(prevInv);
+      boneInv.copy(boneNow).invert();
+      local.copy(boneInv).multiply(delta).multiply(boneNow);
+      axis.copy(swingAxis(local)).multiplyScalar(1 / step);
+      if (axis.length() > maxVel) axis.setLength(maxVel);
+      // The spring pulls the swing back to rest; the parent's motion pushes it
+      // the other way, so the chain trails the body.
+      state.vel.addScaledVector(state.angle, -stiffness * step);
+      state.vel.addScaledVector(axis, -drive * step);
+      state.vel.multiplyScalar(Math.exp(-damping * step));
+      if (state.vel.length() > maxVel) state.vel.setLength(maxVel);
+      state.angle.addScaledVector(state.vel, step);
+      if (state.angle.length() > maxSwing) state.angle.setLength(maxSwing);
+      const total = state.angle.length();
+      if (total > 1e-6) {
+        axis.copy(state.angle).divideScalar(total);
+        state.swing.setFromAxisAngle(axis, total);
+        bone.quaternion.multiply(state.swing);
+      } else {
+        state.swing.identity();
+      }
+      bone.updateMatrixWorld(true);
+      state.prevParent.copy(parentNow);
     }
   }
 
@@ -797,7 +934,19 @@ export class Stage {
     this.setView(this.view);
   }
 
+  setFollowCharacter(on) {
+    this.followCharacter = !!on;
+    if (this.followCharacter) {
+      const center = this._characterCenter();
+      if (center) {
+        this._pivot = center.clone();
+        this.center = center;
+      }
+    }
+  }
+
   _holdFrame() {
+    if (!this.followCharacter) return;
     const center = this._characterCenter();
     if (!center || !this._pivot) return;
     const delta = center.clone().sub(this._pivot);
@@ -849,6 +998,14 @@ export class Stage {
     }
   }
 
+  setSymmetry(on) {
+    this.sym = !!on;
+    if (this.soloBone) {
+      this._applyBoneVisibility();
+      this._drawBones();
+    }
+  }
+
   _releaseView() {
     if (this.locked || this.view === "free") return;
     this.view = "free";
@@ -863,9 +1020,19 @@ export class Stage {
   _dropSkeleton() {
     if (this.skel) {
       this.scene.remove(this.skel);
-      this.skel.geometry.dispose();
-      this.skel.material.dispose();
+      if (this.skel.geometry) this.skel.geometry.dispose();
+      if (this.skel.material) this.skel.material.dispose();
       this.skel = null;
+    }
+    if (this.skelOcta) {
+      const shared = this.skelOcta.userData.octa;
+      this.scene.remove(this.skelOcta);
+      if (shared) {
+        shared.mat?.dispose();
+        shared.edgeMat?.dispose();
+        shared.edges?.dispose();
+      }
+      this.skelOcta = null;
     }
     if (this.skelDots) {
       this.scene.remove(this.skelDots.group);
@@ -882,18 +1049,51 @@ export class Stage {
       this._dropSkeleton();
       return;
     }
-    if (this.skel) return;
-    const helper = new THREE.SkeletonHelper(this.root);
-    helper.material.vertexColors = false;
-    helper.material.needsUpdate = true;
-    helper.material.color.set(0xffd27a);
-    helper.material.depthTest = false;
-    helper.material.transparent = true;
-    helper.material.opacity = 0.95;
-    helper.frustumCulled = false;
-    helper.renderOrder = 8;
-    this.scene.add(helper);
-    this.skel = helper;
+    if (this.skel || this.skelOcta) return;
+    if (this.boneStyle === "blender") {
+      const group = new THREE.Group();
+      const geo = octaBoneGeo();
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0xffd27a,
+        transparent: true,
+        opacity: 0.82,
+        depthTest: false,
+        side: THREE.DoubleSide,
+      });
+      const edgeMat = new THREE.LineBasicMaterial({
+        color: 0xfff0c8,
+        transparent: true,
+        opacity: 0.98,
+        depthTest: false,
+      });
+      const edges = new THREE.EdgesGeometry(geo);
+      const holds = [];
+      this.root.traverse((obj) => {
+        if (!obj.isBone || !obj.parent || !obj.parent.isBone) return;
+        if (obj.name && (obj.name.includes("_leaf") || obj.name.startsWith("ik_") || obj.name.startsWith("socket"))) return;
+        const hold = new THREE.Group();
+        hold.add(new THREE.Mesh(geo, mat), new THREE.LineSegments(edges, edgeMat));
+        hold.renderOrder = 8;
+        hold.userData = { bone: obj.parent, tip: obj };
+        group.add(hold);
+        holds.push(hold);
+      });
+      group.userData.octa = { mat, edgeMat, edges, holds };
+      this.scene.add(group);
+      this.skelOcta = group;
+    } else {
+      const helper = new THREE.SkeletonHelper(this.root);
+      helper.material.vertexColors = false;
+      helper.material.needsUpdate = true;
+      helper.material.color.set(0xffd27a);
+      helper.material.depthTest = false;
+      helper.material.transparent = true;
+      helper.material.opacity = 0.95;
+      helper.frustumCulled = false;
+      helper.renderOrder = 8;
+      this.scene.add(helper);
+      this.skel = helper;
+    }
     const group = new THREE.Group();
     const geo = new THREE.SphereGeometry(1, 10, 8);
     const mat = new THREE.MeshBasicMaterial({ color: 0xffe1a8, depthTest: false });
@@ -912,19 +1112,28 @@ export class Stage {
   }
 
   _placeSkeleton() {
-    if (!this.skel || !this.root) return;
+    if ((!this.skel && !this.skelOcta) || !this.root) return;
     this.root.updateWorldMatrix(true, true);
-    this.skel.updateMatrixWorld(true);
+    if (this.skel) this.skel.updateMatrixWorld(true);
+    const head = this._bonePos || (this._bonePos = new THREE.Vector3());
+    const tip = this._boneTip || (this._boneTip = new THREE.Vector3());
+    if (this.skelOcta) {
+      for (const hold of this.skelOcta.userData.octa.holds) {
+        hold.userData.bone.getWorldPosition(head);
+        hold.userData.tip.getWorldPosition(tip);
+        placeOctaBone(hold, head, tip);
+      }
+    }
+    if (!this.skelDots) return;
     const full = Math.max(this.H, 0.2) * 0.011;
-    const parentAt = this._bonePos || (this._bonePos = new THREE.Vector3());
     for (const mesh of this.skelDots.group.children) {
       const bone = mesh.userData.bone;
       bone.getWorldPosition(mesh.position);
       let size = full;
       const parent = bone.parent;
       if (parent && parent.isBone) {
-        parent.getWorldPosition(parentAt);
-        size = Math.min(full, parentAt.distanceTo(mesh.position) * 0.28);
+        parent.getWorldPosition(head);
+        size = Math.min(full, head.distanceTo(mesh.position) * 0.28);
         size = Math.max(size, full * 0.28);
       }
       mesh.scale.setScalar(size);
@@ -987,8 +1196,8 @@ export class Stage {
         new THREE.MeshBasicMaterial({ color: dotColor(name), depthTest: false }),
       );
       mesh.position.copy(toThree(value));
-      mesh.visible = !this.hiddenBones.has(name);
       mesh.userData = { kind: "joint", id: name, blender: value.slice() };
+      mesh.visible = this._boneVisible(name);
       mesh.renderOrder = 6;
       this.scene.add(mesh);
       this.dots[name] = mesh;
@@ -1000,6 +1209,7 @@ export class Stage {
       );
       mesh.position.copy(toThree(at));
       mesh.userData = { kind: "finger", id, blender: at.slice() };
+      mesh.visible = this._boneVisible(id);
       mesh.renderOrder = 7;
       if (id === this.picked) mesh.scale.setScalar(1.6);
       this.scene.add(mesh);
@@ -1007,6 +1217,7 @@ export class Stage {
     }
     const picked = this.dots[this.picked];
     if (picked && picked.userData.kind === "joint") picked.scale.setScalar(1.45);
+    this._applyBoneVisibility();
   }
 
   setBoneHidden(name, hidden) {
@@ -1017,9 +1228,8 @@ export class Stage {
     for (const name of names) {
       if (hidden) this.hiddenBones.add(name);
       else this.hiddenBones.delete(name);
-      const mesh = this.dots[name];
-      if (mesh) mesh.visible = !hidden;
     }
+    this._applyBoneVisibility();
     this._drawBones();
   }
 
@@ -1028,6 +1238,49 @@ export class Stage {
     if (next === this.boneStyle) return;
     this.boneStyle = next;
     this._drawBones();
+    // Motions skeleton is a separate overlay — rebuild so Blender/stick swaps there too.
+    if (this.showSkeleton) {
+      this._dropSkeleton();
+      this._syncSkeleton();
+    }
+  }
+
+  setBoneOverlayVisible(on) {
+    this.boneOverlay = !!on;
+    this._applyBoneVisibility();
+  }
+
+  _soloSet() {
+    if (!this.soloBone) return null;
+    const names = new Set([this.soloBone]);
+    if (this.sym) {
+      const other = mirrorId(this.soloBone);
+      if (other) names.add(other);
+    }
+    return names;
+  }
+
+  _boneVisible(name) {
+    if (!this.boneOverlay) return false;
+    if (this.hiddenBones.has(name)) return false;
+    const solo = this._soloSet();
+    if (solo && !solo.has(name)) return false;
+    return true;
+  }
+
+  _linkVisible(a, b) {
+    if (!this.boneOverlay) return false;
+    const solo = this._soloSet();
+    if (solo) return solo.has(a) || solo.has(b);
+    return !this.hiddenBones.has(a) && !this.hiddenBones.has(b);
+  }
+
+  _applyBoneVisibility() {
+    for (const [name, mesh] of Object.entries(this.dots)) {
+      if (mesh.userData.kind !== "joint" && mesh.userData.kind !== "finger") continue;
+      mesh.visible = this._boneVisible(name);
+    }
+    if (this.bones) this.bones.visible = this.boneOverlay;
   }
 
   setEnvelopeHidden(name, hidden) {
@@ -1044,32 +1297,66 @@ export class Stage {
       if (!group) return;
       for (const hold of group.children) {
         if (!want.has(hold.userData.name)) continue;
-        hold.userData.hidden = hidden;
-        hold.visible = !hidden;
+        hold.userData.hidden = this.hiddenEnvs.has(hold.userData.name);
       }
     };
     apply(this.envelopes);
     apply(this.animEnv);
+    this._applyEnvVisibility();
     if (hidden && want.has(this._envFocus)) this.highlightEnvelope("");
   }
 
+  _envVisible(name) {
+    if (this.hiddenEnvs.has(name)) return false;
+    if (this.soloEnv && name !== this.soloEnv) return false;
+    return true;
+  }
+
+  _applyEnvVisibility() {
+    const paint = (group) => {
+      if (!group) return;
+      for (const hold of group.children) {
+        const name = hold.userData.name;
+        hold.userData.hidden = this.hiddenEnvs.has(name);
+        hold.visible = this._envVisible(name);
+      }
+    };
+    paint(this.envelopes);
+    paint(this.animEnv);
+  }
+
   isolateBone(name) {
-    const names = Object.entries(this.dots)
-      .filter(([, mesh]) => mesh.userData.kind === "joint")
-      .map(([id]) => id);
-    if (!names.includes(name)) return;
-    this.setBonesHidden(names.filter((id) => id !== name), true);
-    this.setBonesHidden([name], false);
-    this.onIsolate && this.onIsolate("bone", name);
+    if (!this.dots[name] || this.dots[name].userData.kind !== "joint") return;
+    this.soloEnv = "";
+    this.soloBone = name;
+    this._applyBoneVisibility();
+    this._drawBones();
+    this._applyEnvVisibility();
+    this.onIsolate && this.onIsolate("bone", this.soloBone);
   }
 
   isolateEnvelope(name) {
-    const names = this.envelopes.children.map((hold) => hold.userData.name).filter(Boolean);
-    if (!names.includes(name)) return;
-    this.setEnvelopesHidden(names.filter((id) => id !== name), true);
-    this.setEnvelopesHidden([name], false);
-    this.highlightEnvelope(name);
-    this.onIsolate && this.onIsolate("env", name);
+    const known = this.envelopes.children.some((hold) => hold.userData.name === name)
+      || (this.animEnv && this.animEnv.children.some((hold) => hold.userData.name === name));
+    if (!known) return;
+    this.soloBone = "";
+    this.soloEnv = name;
+    this._applyBoneVisibility();
+    this._drawBones();
+    this.highlightEnvelope(this.soloEnv);
+    this._applyEnvVisibility();
+    this.onIsolate && this.onIsolate("env", this.soloEnv);
+  }
+
+  clearSolo() {
+    if (!this.soloBone && !this.soloEnv) return;
+    this.soloBone = "";
+    this.soloEnv = "";
+    this._applyBoneVisibility();
+    this._drawBones();
+    this.highlightEnvelope("");
+    this._applyEnvVisibility();
+    this.onIsolate && this.onIsolate("", "");
   }
 
   setWeightPaint(on, url) {
@@ -1322,18 +1609,20 @@ export class Stage {
     const segs = [];
     for (const [a, b] of LINKS) {
       if (!this.joints?.[a] || !this.joints?.[b]) continue;
-      if (this.hiddenBones.has(a) || this.hiddenBones.has(b)) continue;
+      if (!this._linkVisible(a, b)) continue;
       segs.push([toThree(this.joints[a]), toThree(this.joints[b])]);
     }
-    for (const [a, b] of this._fingerSegs || []) {
-      segs.push([toThree(a), toThree(b)]);
+    if (!this.soloBone) {
+      for (const [a, b] of this._fingerSegs || []) {
+        segs.push([toThree(a), toThree(b)]);
+      }
     }
     return segs;
   }
 
   _drawBones() {
     this._dropBones();
-    if (!this.joints) return;
+    if (!this.joints || !this.boneOverlay) return;
     const segs = this._boneSegments();
     if (!segs.length) return;
     if (this.boneStyle === "blender") {
@@ -1378,6 +1667,7 @@ export class Stage {
       new THREE.LineBasicMaterial({ color: 0xffd27a, depthTest: false, transparent: true, opacity: 0.95 }),
     );
     this.bones.renderOrder = 5;
+    this.bones.visible = this.boneOverlay;
     this.scene.add(this.bones);
   }
 
@@ -1402,9 +1692,11 @@ export class Stage {
       hold.userData.name = name;
       hold.userData.hidden = this.hiddenEnvs.has(name);
       if (!placeCapsule(hold, toThree(start), toThree(end), envelopeRadius(this.H, (scales && scales[name]) || 1))) continue;
+      hold.visible = this._envVisible(name);
       this.envelopes.add(hold);
     }
     this._paintEnvelopeFocus(this.envelopes);
+    this._applyEnvVisibility();
   }
 
   highlightEnvelope(name) {
@@ -1485,6 +1777,7 @@ export class Stage {
     this._envStamp = stamp;
     this._placeAnimEnvelopes();
     this._paintEnvelopeFocus(this.animEnv);
+    this._applyEnvVisibility();
     this.animEnv.visible = !this.animHeat;
   }
 
@@ -1497,6 +1790,7 @@ export class Stage {
       hold.userData.tail.getWorldPosition(_envB);
       placeCapsule(hold, _envA, _envB, envelopeRadius(this.H, sc));
     }
+    this._applyEnvVisibility();
   }
 
   _clearDots() {
@@ -1645,7 +1939,9 @@ export class Stage {
         return;
       }
       if (ev.button === 0) {
+        this.clearSolo();
         if (this.heatLive && this.heatBone) this.setWeightBone("");
+        else if (this.heatOn && this.heatBone) this.setWeightBone("");
         this._releaseView();
       }
       return;
@@ -1688,10 +1984,18 @@ export class Stage {
     if (this.view === "front" || this.view === "back") delta[1] = 0;
     if (this.view === "left" || this.view === "right") delta[0] = 0;
     this.drag.last = prev.map((c, i) => c + delta[i]);
-    if (this.drag.kind === "dot") this._shiftDot(this.drag.id, delta);
-    else if (this.drag.kind === "finger") this._shiftFinger(this.drag.id, delta);
-    else this._shiftJoint(this.drag.id, delta);
-    if (this.sym) this._mirrorShift(this.drag.id, delta);
+    if (this.drag.kind === "dot") {
+      this._shiftDot(this.drag.id, delta);
+      if (this.sym) this._mirrorShift(this.drag.id, delta);
+    } else if (this.drag.kind === "finger") {
+      this._shiftFinger(this.drag.id, delta);
+      if (this.sym) this._mirrorShift(this.drag.id, delta);
+    } else {
+      // Batch primary + mirror into one rebuild so the other side stays visible.
+      this._nudgeJoint(this.drag.id, delta);
+      if (this.sym) this._mirrorShift(this.drag.id, delta, true);
+      this.setBones(this.joints, this.H, this.fingers, null, true);
+    }
     this._placeGrabLabel();
   }
 
@@ -1712,14 +2016,13 @@ export class Stage {
     }
   }
 
-  _shiftJoint(name, delta) {
+  _nudgeJoint(name, delta) {
     if (!this.joints[name]) return;
     this.joints[name] = this.joints[name].map((c, i) => c + delta[i]);
-    const mesh = this.dots[name];
-    if (mesh) {
-      mesh.userData.blender = this.joints[name].slice();
-      mesh.position.copy(toThree(this.joints[name]));
-    }
+  }
+
+  _shiftJoint(name, delta) {
+    this._nudgeJoint(name, delta);
     this.setBones(this.joints, this.H, this.fingers, null, true);
   }
 
@@ -1733,6 +2036,46 @@ export class Stage {
     if (!this.picked || !deltaDeg) return;
     if (this.fingerTips?.[this.picked]) this._spinFinger(this.picked, axis, deltaDeg);
     else this._spinLimb(this.picked, axis, deltaDeg);
+    this.setBones(this.joints, this.H, this.fingers, null, true);
+  }
+
+  /** Snapshot joint + finger pose affected by Bend/Twist/Swing on `name`. */
+  captureRotatePose(name) {
+    if (!name) return null;
+    const names = new Set();
+    const add = (id) => {
+      if (!id) return;
+      names.add(id);
+      for (const child of descendants(id)) names.add(child);
+    };
+    add(name);
+    add(mirrorId(name));
+    const joints = {};
+    for (const id of names) {
+      if (this.joints?.[id]) joints[id] = this.joints[id].slice();
+    }
+    const tips = {};
+    for (const id of Object.keys(this.fingerTips || {})) {
+      const side = id.endsWith("_l") ? "l" : id.endsWith("_r") ? "r" : "";
+      if (!side) continue;
+      const hand = `hand_${side}`;
+      if (names.has(hand) || names.has(id)) tips[id] = this.fingerTips[id].slice();
+    }
+    if (this.fingerTips?.[name]) tips[name] = this.fingerTips[name].slice();
+    const otherTip = mirrorId(name);
+    if (otherTip && this.fingerTips?.[otherTip]) tips[otherTip] = this.fingerTips[otherTip].slice();
+    return { joints, tips };
+  }
+
+  restoreRotatePose(snap) {
+    if (!snap) return;
+    for (const [id, pt] of Object.entries(snap.joints || {})) {
+      if (this.joints?.[id]) this.joints[id] = pt.slice();
+    }
+    if (!this.fingerTips) this.fingerTips = {};
+    for (const [id, pt] of Object.entries(snap.tips || {})) {
+      this.fingerTips[id] = pt.slice();
+    }
     this.setBones(this.joints, this.H, this.fingers, null, true);
   }
 
@@ -1791,13 +2134,16 @@ export class Stage {
     for (const id of tips) copy(id, this.fingerTips);
   }
 
-  _mirrorShift(id, delta) {
+  _mirrorShift(id, delta, soft = false) {
     const flip = delta.slice();
     flip[0] = -delta[0];
     if (id.endsWith("_l") || id.endsWith("_r")) {
       const other = id.slice(0, -1) + (id.endsWith("_l") ? "r" : "l");
       if (this.drag.kind === "dot" && BY_ID[other]) this._shiftDot(other, flip);
-      if (this.drag.kind === "joint" && this.joints[other]) this._shiftJoint(other, flip);
+      if (this.drag.kind === "joint" && this.joints[other]) {
+        if (soft) this._nudgeJoint(other, flip);
+        else this._shiftJoint(other, flip);
+      }
       if (this.drag.kind === "finger" && this.fingerTips?.[other]) this._shiftFinger(other, flip);
     }
   }
@@ -1898,6 +2244,7 @@ export class Stage {
     action.reset().setEffectiveWeight(1).play();
     this.current = action;
     this.paused = false;
+    this._resetJiggle();
     this.mode = "play";
   }
 
@@ -2002,6 +2349,7 @@ export class Stage {
       this._holdFrame();
     }
     if (this.mode === "play" || this.mode === "pose") this._applyFit();
+    if (this.jiggleOn && this.mode === "play" && !this.paused) this._jiggleStep(dt);
     this._placeSkeleton();
     this._placeAnimEnvelopes();
     if (this.onPlayback) this.onPlayback(this.playback());

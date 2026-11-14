@@ -8,19 +8,19 @@ from . import runtime as rt
 LIBRARY = rt.PKG / "library" / "mesh2motion"
 PREVIEWS = LIBRARY / "preview_index.json"
 
+# Default Saved motions after Bind & wear (matches the Animations panel starter set).
 BUILTIN = (
     {"id": "idle", "label": "Idle", "file": "idle-subtle.glb", "frame": 30},
     {"id": "walk", "label": "Walk", "file": "walk.glb", "frame": 9},
-    {"id": "mild_crouch", "label": "Mild crouch", "file": "crouch-idle.glb", "frame": 20},
     {"id": "wave", "label": "Wave", "file": "greeting.glb", "frame": 26},
-    {"id": "farm_harvest", "label": "Farm harvest", "file": "farm-harvest.glb", "frame": 18},
-    {"id": "run", "label": "Run", "file": "jog.glb", "frame": 8},
+    {"id": "run", "label": "Run", "file": "run-anime.glb", "frame": 8},
     {"id": "jump", "label": "Jump", "file": "jump-2.glb", "frame": 20},
     {"id": "sit", "label": "Sit", "file": "sitting-idle.glb", "frame": 30},
-    {"id": "cheer", "label": "Cheer", "file": "victory-fist-pump.glb", "frame": 24},
     {"id": "bow", "label": "Bow", "file": "bow.glb", "frame": 24},
     {"id": "clap", "label": "Clap", "file": "clapping.glb", "frame": 18},
     {"id": "point", "label": "Point", "file": "interact.glb", "frame": 22},
+    {"id": "jog", "label": "Jog", "file": "jog.glb", "frame": 8},
+    {"id": "idle-talking", "label": "Idle Talking", "file": "idle-talking.glb", "frame": 30},
 )
 
 
@@ -66,7 +66,7 @@ def fresh_settings():
             "source": "builtin",
             "fit": default_fit(),
         }
-    return {"selected": "walk", "clips": clips}
+    return {"selected": "idle", "jiggle": False, "clips": clips}
 
 
 def read_settings(folder: Path):
@@ -74,7 +74,8 @@ def read_settings(folder: Path):
     if not path.is_file():
         return fresh_settings()
     data = json.loads(path.read_text(encoding="utf-8"))
-    data.setdefault("selected", "walk")
+    data.setdefault("selected", "idle")
+    data.setdefault("jiggle", False)
     data.setdefault("clips", {})
     return data
 

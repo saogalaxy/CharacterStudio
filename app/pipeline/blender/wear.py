@@ -18,20 +18,23 @@ addon_utils.enable("io_scene_gltf2")
 argv = sys.argv[sys.argv.index("--") + 1:]
 mesh_path, markers_path, out_dir, library = argv
 os.makedirs(out_dir, exist_ok=True)
+APP = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if APP not in sys.path:
+    sys.path.insert(0, APP)
+from pipeline.bodymath import DEFAULT_ENVELOPE_SCALES
 
 CLIPS = {
     "idle": "idle-subtle.glb",
     "walk": "walk.glb",
-    "mild_crouch": "crouch-idle.glb",
     "wave": "greeting.glb",
-    "farm_harvest": "farm-harvest.glb",
-    "run": "jog.glb",
+    "run": "run-anime.glb",
     "jump": "jump-2.glb",
     "sit": "sitting-idle.glb",
-    "cheer": "victory-fist-pump.glb",
     "bow": "bow.glb",
     "clap": "clapping.glb",
     "point": "interact.glb",
+    "jog": "jog.glb",
+    "idle-talking": "idle-talking.glb",
 }
 DROP = {
     "four": ("pinky_",),
@@ -267,12 +270,25 @@ def paint(body, arm, height, det):
             children[index[p]].append(i)
     envelopes = det.get("envelopes") or {}
     tags = det.get("tags") or {}
-    scales = np.array([float(envelopes.get(n, 1.0)) for n in names], dtype=np.float64)
+    applied = {
+        n: float(envelopes[n]) if n in envelopes else float(DEFAULT_ENVELOPE_SCALES.get(n, 1.0))
+        for n in names
+    }
+    scales = np.array([applied[n] for n in names], dtype=np.float64)
     sigma = (0.02 * height * scales) ** 2
     neck_i = index.get("neck_01")
     head_i = index.get("head")
+    spine03_i = index.get("spine_03")
+    foot_l_i = index.get("foot_l")
+    foot_r_i = index.get("foot_r")
+    calf_l_i = index.get("calf_l")
+    calf_r_i = index.get("calf_r")
     neck_z = float(heads[neck_i][2]) if neck_i is not None else None
+    head_z = float(heads[head_i][2]) if head_i is not None else None
+    foot_l_z = float(heads[foot_l_i][2]) if foot_l_i is not None else None
+    foot_r_z = float(heads[foot_r_i][2]) if foot_r_i is not None else None
     side = 0.06 * height
+    collar_r = 0.035 * height
     coords = np.array([(body.matrix_world @ v.co)[:] for v in body.data.vertices], dtype=np.float64)
     groups = {}
     for n in names:
@@ -293,6 +309,45 @@ def paint(body, arm, height, det):
             d = dist[local].copy()
             if neck_z is not None and head_i is not None and vert[2] < neck_z - 0.02 * height:
                 d[head_i] = 1e6
+            # Hair / crown above the head joint — neck must not own these verts.
+            if neck_i is not None and head_z is not None and vert[2] > head_z + 0.02 * height:
+                d[neck_i] = 1e6
+            # Thin collar only — AF keeps neck as a small band, not trapezius/jaw/chest.
+            if neck_i is not None and neck_z is not None:
+                if (
+                    abs(vert[2] - neck_z) > 0.055 * height
+                    or abs(vert[0]) > 0.08 * height
+                    or d[neck_i] > collar_r
+                ):
+                    d[neck_i] = 1e6
+            # Face / throat only — keep jaw off clavicle/upperarm. Do NOT widen this into
+            # the trapezius: that hands shoulder skin to neck/head and yanks it into hair.
+            if neck_z is not None:
+                face_x = 0.07 * height
+                throat_x = 0.045 * height
+                if vert[2] > neck_z - 0.02 * height and abs(vert[0]) < face_x:
+                    if spine03_i is not None:
+                        d[spine03_i] = 1e6
+                    for i, name in enumerate(names):
+                        if name.startswith(("clavicle_", "upperarm_", "lowerarm_", "hand_")):
+                            d[i] = 1e6
+                elif (neck_z - 0.05 * height) < vert[2] < (neck_z + 0.04 * height) and abs(vert[0]) < throat_x:
+                    for i, name in enumerate(names):
+                        if name.startswith(("upperarm_", "clavicle_")):
+                            d[i] = 1e6
+            # Sole / ankle: foot owns below the foot joint so calf does not wash out toes.
+            if foot_l_i is not None and calf_l_i is not None and foot_l_z is not None:
+                if vert[2] < foot_l_z + 0.04 * height and vert[0] > -side:
+                    d[calf_l_i] = 1e6
+            if foot_r_i is not None and calf_r_i is not None and foot_r_z is not None:
+                if vert[2] < foot_r_z + 0.04 * height and vert[0] < side:
+                    d[calf_r_i] = 1e6
+            # Arm tubes — AF keeps upper/lowerarm on the limb, not a wide chest bloom.
+            arm_r = 0.05 * height
+            for i, name in enumerate(names):
+                if name.startswith(("upperarm_", "lowerarm_")) and d[i] > arm_r:
+                    d[i] = 1e6
+
             for i, name in enumerate(names):
                 if name.endswith("_l") and vert[0] < -side:
                     d[i] = 1e6
@@ -306,6 +361,17 @@ def paint(body, arm, height, det):
             use = {nearest, parent[nearest]}
             use.update(children.get(nearest, ()))
             use.discard(-1)
+            # Shoulder / trapezius / neck owners must not blend with head — that pulls
+            # deltoid and collar into the hair when head/neck pose moves. Head volume
+            # likewise must not share with neck (AF keeps a thin collar, strong head).
+            nearest_name = names[nearest]
+            if head_i is not None and (
+                nearest_name.startswith(("clavicle_", "upperarm_", "lowerarm_"))
+                or nearest_name in ("spine_03", "neck_01")
+            ):
+                use.discard(head_i)
+            if nearest_name == "head" and neck_i is not None:
+                use.discard(neck_i)
             sig = sigma[nearest] * (4.0 if tag == "cloth" else 1.0)
             chosen = []
             for i in use:
@@ -345,6 +411,7 @@ def paint(body, arm, height, det):
         "verts": int(len(coords)),
         "unweighted": int((~touched).sum()),
         "envelopes": envelopes,
+        "envelope_scales": {k: round(v, 3) for k, v in applied.items() if abs(v - 1.0) > 1e-6},
         "tags": tags,
         "finger_weight": round(finger_sum, 1),
         "head_weight": round(head_sum, 1),
@@ -356,7 +423,30 @@ def action_range(action):
     return int(round(start)), int(round(end))
 
 
+def _parent_space_rest(pb):
+    rest = pb.bone.matrix_local
+    if pb.parent:
+        return pb.parent.bone.matrix_local.inverted() @ rest
+    return rest.copy()
+
+
+def _armature_height(arm):
+    zs = []
+    mw = arm.matrix_world
+    for bone in arm.data.bones:
+        zs.append((mw @ bone.head_local).z)
+        zs.append((mw @ bone.tail_local).z)
+    return (max(zs) - min(zs)) if zs else 1.0
+
+
 def copy_clip(dst, src, clip_id):
+    """Bake library motion onto dst with parent-space rest correction.
+
+    Raw local quaternions assume matching bone axes. After fit_bones the
+    character's parent-space rests diverge, so idle/walk pull in a lean and
+    yank the hips. Conjugate each source basis rotation into dst axes, and
+    only transfer scaled root location (never raw pelvis translation).
+    """
     if src.animation_data is None or src.animation_data.action is None:
         raise RuntimeError(f"{clip_id} has no action")
     src_action = src.animation_data.action
@@ -375,6 +465,17 @@ def copy_clip(dst, src, clip_id):
             pass
     scene = bpy.context.scene
     src.animation_data.action = src_action
+    src_h = _armature_height(src)
+    dst_h = _armature_height(dst)
+    loc_scale = (dst_h / src_h) if src_h > 1e-6 else 1.0
+    corr = {}
+    for bone in dst.pose.bones:
+        src_bone = src.pose.bones.get(bone.name)
+        if src_bone is None:
+            continue
+        src_axes = _parent_space_rest(src_bone).to_3x3()
+        dst_axes = _parent_space_rest(bone).to_3x3()
+        corr[bone.name] = dst_axes.inverted() @ src_axes
     frames = list(range(start, end + 1))
     frames.append(start)  # loop-close: the last pose is the first pose
     for out_i, frame in enumerate(frames):
@@ -385,11 +486,14 @@ def copy_clip(dst, src, clip_id):
             src_bone = src.pose.bones.get(bone.name)
             if src_bone is None:
                 continue
+            loc, rot, _scale = src_bone.matrix_basis.decompose()
+            c = corr[bone.name]
+            dst_r = c @ rot.to_matrix() @ c.inverted()
             bone.rotation_mode = "QUATERNION"
-            bone.rotation_quaternion = src_bone.rotation_quaternion.copy()
+            bone.rotation_quaternion = dst_r.to_quaternion()
             bone.keyframe_insert("rotation_quaternion", frame=written)
-            if bone.name in ("pelvis", "root"):
-                bone.location = src_bone.location.copy()
+            if bone.name == "root":
+                bone.location = Vector(loc) * loc_scale
                 bone.keyframe_insert("location", frame=written)
     action.frame_range
     return end - start + 1
@@ -536,7 +640,7 @@ def deform_gate(body, arm):
     detail = {}
     tears = 0
     used_bones = set()
-    frames = [("idle", 30), ("walk", 1), ("walk", 9), ("walk", 25), ("mild_crouch", 20)]
+    frames = [("idle", 30), ("walk", 1), ("walk", 9), ("walk", 25), ("sit", 20)]
     for clip, frame in frames:
         act = bpy.data.actions.get(clip)
         if act is None:

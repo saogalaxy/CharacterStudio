@@ -2,7 +2,9 @@
 
 markers.json lives in the job folder. A write accepts the eight dot names
 or a joints dict. Shoulder, hip, and ankle persist only as joints.
-A pose edit clears the skeleton check, the rig, and the animations.
+A pose edit clears the skeleton check and marks the bind stale.
+The last rigged GLB is kept so the Rig page can still show weight paint
+until Bind & wear runs again. Animations stay blocked while it is stale.
 """
 import json
 import random
@@ -106,10 +108,28 @@ class Job:
                 self.meta["skeleton_seen"] = False
         if step == "markers":
             self.meta["skeleton_seen"] = False
+            self.meta.pop("rig_stale", None)
             self.meta["steps"]["skeleton"] = {"state": "empty"}
             shutil.rmtree(self.dir / "rig", ignore_errors=True)
             shutil.rmtree(self.dir / "export", ignore_errors=True)
             self.path("animations").unlink(missing_ok=True)
+        self.save()
+
+    def invalidate_bind(self, keep_preview=True):
+        """Markers moved: bind is out of date. Keep the GLB for viewport paint."""
+        self.meta["skeleton_seen"] = False
+        for name in ("skeleton", "rig", "animations"):
+            row = self.meta["steps"].setdefault(name, {})
+            row.clear()
+            row["state"] = "empty"
+        self.path("animations").unlink(missing_ok=True)
+        shutil.rmtree(self.dir / "export", ignore_errors=True)
+        has_rig = self.path("rig").is_file()
+        if keep_preview and has_rig:
+            self.meta["rig_stale"] = True
+        else:
+            self.meta.pop("rig_stale", None)
+            shutil.rmtree(self.dir / "rig", ignore_errors=True)
         self.save()
 
     def cloud(self):
@@ -117,10 +137,36 @@ class Job:
             self._cloud = np.load(self.path("surface"))
         return self._cloud
 
-    def export_glb(self):
+    def export_slug(self):
         raw = self.meta.get("name") or "character"
-        slug = "".join(ch.lower() if ch.isalnum() else "_" for ch in raw).strip("_") or "character"
-        return self.dir / "export" / f"{slug}.glb"
+        return "".join(ch.lower() if ch.isalnum() else "_" for ch in raw).strip("_") or "character"
+
+    def export_stem(self):
+        return self.dir / "export" / self.export_slug()
+
+    def export_file(self, fmt):
+        fmt = (fmt or "glb").lower()
+        if fmt not in {"glb", "gltf", "fbx"}:
+            raise ValueError(f"unsupported export format {fmt}")
+        # Named by type: character_glb.glb, character_fbx.fbx, …
+        return self.dir / "export" / f"{self.export_slug()}_{fmt}.{fmt}"
+
+    def export_glb(self):
+        path = self.export_file("glb")
+        if path.is_file():
+            return path
+        # Older exports used character.glb without the type suffix.
+        legacy = self.dir / "export" / f"{self.export_slug()}.glb"
+        return path if not legacy.is_file() else legacy
+
+    def _export_legacy(self, fmt):
+        return self.dir / "export" / f"{self.export_slug()}.{fmt}"
+
+    def _export_present(self, fmt):
+        return self.export_file(fmt).is_file() or self._export_legacy(fmt).is_file()
+
+    def export_dir_label(self):
+        return str(self.dir / "export")
 
     def markers(self):
         path = self.path("markers")
@@ -147,6 +193,7 @@ class Job:
         off = (det or {}).get("off_body") or []
         joff = (det or {}).get("joints_off_body") or []
         seen = bool(self.meta.get("skeleton_seen"))
+        stale = bool(self.meta.get("rig_stale")) and files["rig"]
         running = next((s for s in STEPS if self.meta["steps"][s].get("state") == "running"), None)
         can = {
             "source": running is None,
@@ -155,7 +202,7 @@ class Job:
             "markers": running is None and files["mesh"],
             "skeleton": running is None and files["markers"],
             "rig": running is None and files["markers"] and seen and not off and not joff,
-            "animations": running is None and files["rig"],
+            "animations": running is None and files["rig"] and not stale,
         }
         check = None
         if self.path("check").is_file():
@@ -175,10 +222,14 @@ class Job:
             "off_body": off,
             "joints_off_body": joff,
             "skeleton_seen": seen,
+            "rig_stale": stale,
             "animations": anim,
             "motion_library_count": len(motions.library_clips()),
-            "export_path": str(self.export_glb()),
-            "export_ready": self.export_glb().is_file(),
+            "export_path": str(self.export_dir_label()),
+            "export_ready": any(self._export_present(fmt) for fmt in ("glb", "gltf", "fbx")),
+            "export_formats": [
+                fmt for fmt in ("glb", "gltf", "fbx") if self._export_present(fmt)
+            ],
         }
 
 
@@ -390,16 +441,54 @@ class Studio:
         job.set_step("mesh", state="running", message="mesh check passed")
 
     def _check_mesh(self, job, source=None, check_path=None, cancel=None):
+        """Straighten lean (Pixel3D / imports), then mesh-check. Always writes mesh.glb."""
         mesh_path = source or job.path("mesh")
         check_path = check_path or job.path("check")
-        log = job.dir / "logs" / "mesh_check.txt"
-        log.parent.mkdir(exist_ok=True)
-        code = rt.blender("check_mesh.py", [str(mesh_path), str(check_path)], log, cancel, 600)
-        if code != 0 or not Path(check_path).is_file():
-            raise RuntimeError("mesh check failed")
-        if source is not None:
-            shutil.copyfile(mesh_path, job.path("mesh"))
-            shutil.copyfile(check_path, job.path("check"))
+        upright = job.dir / "mesh.upright.glb"
+        log_dir = job.dir / "logs"
+        log_dir.mkdir(exist_ok=True)
+        code = rt.blender(
+            "stand_up.py", [str(mesh_path), str(upright)], log_dir / "stand_up.txt", cancel, 600,
+        )
+        if code != 0 or not upright.is_file():
+            upright.unlink(missing_ok=True)
+            raise RuntimeError("could not straighten the mesh")
+        try:
+            code = rt.blender(
+                "check_mesh.py", [str(upright), str(check_path)], log_dir / "mesh_check.txt", cancel, 600,
+            )
+            if code != 0 or not Path(check_path).is_file():
+                raise RuntimeError("mesh check failed")
+            shutil.copyfile(upright, job.path("mesh"))
+            if Path(check_path).resolve() != job.path("check").resolve():
+                shutil.copyfile(check_path, job.path("check"))
+        finally:
+            upright.unlink(missing_ok=True)
+
+    def straighten_existing_mesh(self, job, cancel=None):
+        """Retroactively stand up a job mesh that was imported/generated before stand_up.
+
+        Keeps ``mesh.pre_standup.glb`` as the original. Clears markers/rig/animations
+        because joint coords no longer match the leaning mesh.
+        """
+        mesh = job.path("mesh")
+        if not mesh.is_file():
+            raise RuntimeError("no mesh on this job")
+        backup = job.dir / "mesh.pre_standup.glb"
+        if not backup.is_file():
+            shutil.copyfile(mesh, backup)
+        self._check_mesh(job, source=backup, cancel=cancel)
+        job.clear_after("mesh")
+        job.meta.pop("rig_stale", None)
+        job.set_step(
+            "mesh",
+            state="done",
+            message="mesh straightened",
+            origin=job.meta.get("steps", {}).get("mesh", {}).get("origin") or "retro_standup",
+            finished=_now(),
+        )
+        job.save()
+        return job.state()
 
     def _markers(self, job):
         log = job.dir / "logs" / "markers.txt"
@@ -428,8 +517,17 @@ class Studio:
         if not job.meta.get("skeleton_seen"):
             raise RuntimeError("open the skeleton and check it before binding")
         out = job.dir / "rig"
+        # Windows often keeps the prior GLB locked while the UI is viewing it.
         shutil.rmtree(out, ignore_errors=True)
-        out.mkdir()
+        out.mkdir(exist_ok=True)
+        for child in list(out.iterdir()):
+            if child.is_dir():
+                shutil.rmtree(child, ignore_errors=True)
+            else:
+                try:
+                    child.unlink()
+                except OSError:
+                    pass
         log = job.dir / "logs" / "rig.txt"
         log.parent.mkdir(exist_ok=True)
         library = str(rt.PKG / "library" / "mesh2motion")
@@ -452,6 +550,7 @@ class Studio:
         if report_path.is_file():
             report = json.loads(report_path.read_text(encoding="utf-8"))
         gate = ((report.get("steps") or {}).get("deform_qa") or {}).get("gate") or "PASS"
+        job.meta.pop("rig_stale", None)
         job.set_step("rig", state="running", message=f"deformation check {gate}", gate=gate)
 
     def put_image(self, job, step, raw: bytes):
@@ -468,7 +567,7 @@ class Studio:
         job.path("mesh").write_bytes(raw)
         self._check_mesh(job)
         job.clear_after("mesh")
-        job.set_step("mesh", state="done", message="mesh check passed", origin="upload", finished=_now())
+        job.set_step("mesh", state="done", message="mesh straightened and checked", origin="upload", finished=_now())
         return job.state()
 
     def set_tpose_settings(self, job, payload):
@@ -492,7 +591,7 @@ class Studio:
         return job.state()
 
     def put_markers(self, job, markers=None, joints=None, reset=False, moved=None,
-                    envelopes=None, tags=None, fingers=None, finger_tips=None):
+                    envelopes=None, tags=None, jiggle=None, fingers=None, finger_tips=None):
         det = json.loads(job.path("markers").read_text(encoding="utf-8"))
         cloud = job.cloud()
         if reset:
@@ -537,6 +636,21 @@ class Studio:
                 else:
                     stored[key] = value
             det["tags"] = stored
+        if jiggle is not None:
+            # Jiggle chains are runtime-only: they never invalidate the bind.
+            if not isinstance(jiggle, dict):
+                raise ValueError("jiggle chains must be a map")
+            known = set((det.get("joints") or {}).keys())
+            stored = set(det.get("jiggle") or [])
+            for key, value in jiggle.items():
+                name = str(key).strip()
+                if name not in known:
+                    raise ValueError(f"unknown bone {name}")
+                if value:
+                    stored.add(name)
+                else:
+                    stored.discard(name)
+            det["jiggle"] = sorted(stored)
         if fingers is not None:
             if fingers not in ("five", "four", "three", "mitten"):
                 raise ValueError("fingers must be five, four, three, or mitten")
@@ -558,10 +672,8 @@ class Studio:
             det["off_body"] = bad_m
             det["joints_off_body"] = bad_j
         pose_edit = reset or markers is not None or joints is not None or finger_tips is not None
-        if pose_edit:
-            job.meta["skeleton_seen"] = False
         if pose_edit or envelopes is not None or tags is not None or fingers is not None:
-            job.clear_after("skeleton")
+            job.invalidate_bind(keep_preview=True)
         job.path("markers").write_text(json.dumps(det, indent=1), encoding="utf-8")
         job._cloud = None
         label = (moved or "").strip().replace("_", " ")
@@ -573,6 +685,8 @@ class Studio:
             message = "envelopes adjusted"
         elif tags is not None:
             message = "cloth and props adjusted"
+        elif jiggle is not None:
+            message = "jiggle chains adjusted"
         elif fingers is not None:
             message = "fingers adjusted"
         elif reset:
@@ -587,6 +701,8 @@ class Studio:
         clips = settings.setdefault("clips", {})
         if payload.get("selected"):
             settings["selected"] = str(payload["selected"])
+        if "jiggle" in payload:
+            settings["jiggle"] = bool(payload["jiggle"])
         for cid, patch in (payload.get("clips") or {}).items():
             row = clips.setdefault(cid, {
                 "enabled": True, "speed": 1, "label": cid, "fit": motions.default_fit(),
@@ -689,13 +805,24 @@ class Studio:
             return path
         return None
 
-    def export_package(self, job):
+    def export_package(self, job, formats=None):
         if not job.path("rig").is_file():
             raise RuntimeError("bind the character before export")
         settings = motions.read_settings(job.dir)
         clips = settings.get("clips") or {}
         if not clips:
             raise RuntimeError("add a motion before export")
+        allowed = ("glb", "gltf", "fbx")
+        if formats is None:
+            chosen = ["glb"]
+        else:
+            chosen = []
+            for item in formats:
+                fmt = str(item or "").lower().lstrip(".")
+                if fmt in allowed and fmt not in chosen:
+                    chosen.append(fmt)
+        if not chosen:
+            raise RuntimeError("pick at least one export format")
         manifest = []
         for clip_id, row in clips.items():
             src = self._clip_file(job, clip_id, row)
@@ -704,20 +831,35 @@ class Studio:
         export_dir.mkdir(exist_ok=True)
         manifest_path = export_dir / "pack.json"
         manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-        out = job.export_glb()
+        stem = job.export_stem()
         log = job.dir / "logs" / "export.txt"
         log.parent.mkdir(exist_ok=True)
-        code = rt.blender("pack.py", [str(job.path("rig")), str(manifest_path), str(out)], log, None, 3600)
-        if code != 0 or not out.is_file():
-            raise RuntimeError("export failed")
+        code = rt.blender(
+            "pack.py",
+            [str(job.path("rig")), str(manifest_path), str(stem), json.dumps(chosen)],
+            log, None, 3600,
+        )
+        missing = [fmt for fmt in chosen if not job.export_file(fmt).is_file()]
+        if code != 0 or missing:
+            raise RuntimeError("export failed" + (f" ({', '.join(missing)})" if missing else ""))
         job.set_step("animations", state="done", message="export ready", origin="edited")
         state = job.state()
-        state["download"] = f"export/{out.name}"
+        state["downloads"] = [f"export/{job.export_file(fmt).name}" for fmt in chosen]
+        state["download"] = state["downloads"][0]
         return state
 
     def reveal_export(self, job):
-        path = job.export_glb()
-        if not path.is_file():
+        path = None
+        for fmt in ("glb", "gltf", "fbx"):
+            cand = job.export_file(fmt)
+            if cand.is_file():
+                path = cand
+                break
+            legacy = job._export_legacy(fmt)
+            if legacy.is_file():
+                path = legacy
+                break
+        if path is None:
             raise RuntimeError("export the character first")
         subprocess.Popen(["explorer", f"/select,{path}"])
         return job.state()

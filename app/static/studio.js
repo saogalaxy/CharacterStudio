@@ -1,4 +1,5 @@
-import { Stage, ENVELOPE_BONES, boneLabel, bonePlace, dotColorCss, envelopeColorCss, poseLabel, visibleDots } from "./stage.js?v=af60";
+import { Stage, ENVELOPE_BONES, boneLabel, bonePlace, dotColorCss, envelopeColorCss, poseLabel, visibleDots } from "./stage.js?v=bg01";
+import { mountPlacementMinimap } from "./placement-minimap.js?v=af75";
 
 const STEPS = [
   ["source", "Source"],
@@ -34,6 +35,9 @@ let showAnimEnv = false;
 let showAnimHeat = false;
 let showHeat = false;
 let boneStyle = "stick";
+let mirrorMarkers = true;
+let lockMotionCamera = true;
+let exportFormats = { glb: true, gltf: false, fbx: false };
 let libraryScroll = 0;
 
 async function api(path, options) {
@@ -44,8 +48,13 @@ async function api(path, options) {
 }
 
 function fileUrl(name) {
-  const step = name === "tpose.png" ? "tpose" : name === "source.png" ? "source" : "";
-  const stamp = step ? job.steps?.[step]?.updated || "" : "";
+  // Bust browser + stage heat cache when a step's artifact changes.
+  let stamp = "";
+  if (name === "tpose.png") stamp = job.steps?.tpose?.updated || "";
+  else if (name === "source.png") stamp = job.steps?.source?.updated || "";
+  else if (name === "mesh.glb" || name.startsWith("mesh.")) stamp = job.steps?.mesh?.updated || "";
+  else if (name.startsWith("rig/")) stamp = job.steps?.rig?.updated || job.steps?.rig?.finished || "";
+  else if (name.startsWith("markers") || name === "surface.npy") stamp = job.steps?.markers?.updated || "";
   const q = stamp ? `?v=${encodeURIComponent(stamp)}` : "";
   return `/api/jobs/${job.id}/file/${name}${q}`;
 }
@@ -58,15 +67,14 @@ async function boot() {
   stage.onJoints = (joints, moved) => postJSON("markers", { joints, finger_tips: stage.fingerTips, moved });
   stage.onPick = () => { if (view === "rig") mountRotate(); };
   stage.onIsolate = (kind, name) => {
-    syncEyes(kind);
-    const rows = document.querySelectorAll(kind === "env" ? ".env-key" : ".dotrow");
-    rows.forEach((row) => {
+    if (kind === "bone" || kind === "env") syncEyes(kind);
+    document.querySelectorAll(".dotrow, .env-key").forEach((row) => {
       const eye = row.querySelector("button.eye");
-      const on = eye?.dataset.bone === name;
+      const on = !!name && eye?.dataset.bone === name;
       row.classList.toggle("hot", on);
       if (on) row.scrollIntoView({ block: "nearest" });
     });
-    if (showHeat || showAnimHeat) stage.setWeightBone(name);
+    if (showHeat || showAnimHeat) stage.setWeightBone(name || "");
   };
   const views = document.createElement("div");
   views.className = "views";
@@ -287,7 +295,7 @@ function render() {
     };
     bar.appendChild(button);
   });
-  const key = [view, showBones, job.running, job.steps[view]?.message, job.skeleton_seen, (job.off_body || []).join(), showEnv].join("|");
+  const key = [view, showBones, job.running, job.steps[view]?.message, job.skeleton_seen, job.rig_stale, (job.off_body || []).join(), showEnv, (job.markers?.jiggle || []).join(), job.animations?.jiggle].join("|");
   if (key !== panelKey) {
     panelKey = key;
     drawPanel();
@@ -296,7 +304,7 @@ function render() {
   const skelButton = stageBox.querySelector(".views button.skel");
   const envButton = stageBox.querySelector(".views button.envelopes");
   const weightButton = stageBox.querySelector(".views button.weights");
-  const showStageTools = view === "animations" && !!job.files.rig;
+  const showStageTools = view === "animations" && !!job.files.rig && !job.rig_stale;
   if (skelButton) skelButton.classList.toggle("gone", !showStageTools);
   if (envButton) envButton.classList.toggle("gone", !showStageTools);
   if (weightButton) weightButton.classList.toggle("gone", !showStageTools);
@@ -445,6 +453,28 @@ function drawMesh() {
   }
 }
 
+function mirrorToggle(host, kind = "marker") {
+  const row = document.createElement("label");
+  row.className = "row";
+  const tick = document.createElement("input");
+  tick.type = "checkbox";
+  tick.checked = mirrorMarkers;
+  tick.onchange = () => {
+    mirrorMarkers = tick.checked;
+    stage.setSymmetry(mirrorMarkers);
+    if (view === "rig" && showBones) paintMarkers();
+  };
+  row.append("Mirror left / right", tick);
+  host.appendChild(row);
+  const note = document.createElement("p");
+  note.className = "help";
+  note.textContent = kind === "joint"
+    ? "When on, dragging a left or right joint moves its pair. Turn off to place one side alone."
+    : "When on, moving one side moves the other. Turn off to adjust a single marker.";
+  host.appendChild(note);
+  stage.setSymmetry(mirrorMarkers);
+}
+
 function drawMarkers() {
   const names = job.off_body || [];
   if (names.length) {
@@ -458,6 +488,7 @@ function drawMarkers() {
   help.className = "help";
   help.textContent = "Orange dots drag. Grab a white dot and it turns orange. Hover a dot and its name follows it, then fades out.";
   box.appendChild(help);
+  mirrorToggle(box);
   box.appendChild(button("Place dots", () => postJSON("run/markers", {}), true, !job.can_run.markers));
   box.appendChild(button("Reset dots", () => postJSON("markers", { reset: true, moved: "reset" }), false, !job.files.markers));
   panel.appendChild(box);
@@ -473,6 +504,7 @@ function drawRig() {
   help.className = "help";
   help.textContent = "Each finger has its own dot. Drag a dot to move it, or use Bend, Twist, and Swing to rotate that limb.";
   box.appendChild(help);
+  mirrorToggle(box, "joint");
   const heat = document.createElement("label");
   heat.className = "row";
   const heatTick = document.createElement("input");
@@ -487,9 +519,13 @@ function drawRig() {
   box.appendChild(heat);
   const heatNote = document.createElement("p");
   heatNote.className = "help";
-  heatNote.textContent = job.files.rig
-    ? "Colors the last bind. Click a bone or a volume to paint that bone. Red is strong and blue is none."
-    : "Bind the character once. Weight paint uses that result.";
+  if (!job.files.rig) {
+    heatNote.textContent = "Bind the character once. Weight paint uses that result.";
+  } else if (job.rig_stale) {
+    heatNote.textContent = "Last bind is stale after moving dots. Skeleton and envelopes still follow the markers. Bind & wear again to refresh the paint.";
+  } else {
+    heatNote.textContent = "Point at a bone name below to paint that bone alone (red = strong, blue = none). Click a name to lock it; click empty space or Select all to show every bone again.";
+  }
   box.appendChild(heatNote);
   const bones = document.createElement("label");
   bones.className = "row";
@@ -498,32 +534,32 @@ function drawRig() {
   boneTick.checked = showBones;
   boneTick.onchange = () => {
     showBones = boneTick.checked;
-    if (!showBones) showEnv = false;
+    panelKey = "";
     paintMarkers();
-    const envBox = box.querySelector("input[data-env]");
-    if (envBox) envBox.checked = showEnv;
+    drawPanel();
   };
   bones.append("Show skeleton", boneTick);
   box.appendChild(bones);
-  if (showBones) {
-    const style = document.createElement("label");
-    style.className = "row";
-    const styleTick = document.createElement("input");
-    styleTick.type = "checkbox";
-    styleTick.checked = boneStyle === "blender";
-    styleTick.onchange = () => {
-      boneStyle = styleTick.checked ? "blender" : "stick";
-      stage.setBoneStyle(boneStyle);
-    };
-    style.append("Blender bones", styleTick);
-    box.appendChild(style);
-    const styleNote = document.createElement("p");
-    styleNote.className = "help";
-    styleNote.textContent = "Octahedral bones like Blender. Stick figure stays the default.";
-    box.appendChild(styleNote);
-  }
+  const style = document.createElement("label");
+  style.className = "row";
+  const styleTick = document.createElement("input");
+  styleTick.type = "checkbox";
+  styleTick.checked = boneStyle === "blender";
+  styleTick.disabled = !showBones;
+  styleTick.onchange = () => {
+    boneStyle = styleTick.checked ? "blender" : "stick";
+    stage.setBoneStyle(boneStyle);
+  };
+  style.append("Blender bones", styleTick);
+  box.appendChild(style);
+  const styleNote = document.createElement("p");
+  styleNote.className = "help";
+  styleNote.textContent = "Octahedral bones like Blender. Turn on Show skeleton first. Stick figure stays the default.";
+  box.appendChild(styleNote);
+  mountPlacementMinimap(box);
   if (showBones && job.markers?.joints) {
     const names = visibleDots(job.markers.joints);
+    const chains = new Set(job.markers?.jiggle || []);
     box.appendChild(eyeTools("bone", names));
     const list = document.createElement("div");
     list.className = "dotlist";
@@ -548,11 +584,26 @@ function drawRig() {
       const text = document.createElement("span");
       text.className = "bone-name";
       text.textContent = label;
+      const chain = document.createElement("button");
+      chain.type = "button";
+      chain.className = "chain" + (chains.has(name) ? " on" : "");
+      chain.textContent = "J";
+      chain.title = "Jiggle chain: this bone and every bone below it. Turn Jiggle physics on in Animations.";
+      chain.setAttribute("aria-pressed", chains.has(name) ? "true" : "false");
+      chain.onclick = (event) => {
+        event.stopPropagation();
+        postJSON("markers", { jiggle: { [name]: !chains.has(name) } });
+      };
       row.title = bonePlace(name);
-      row.append(eye, swatch, text);
+      row.append(eye, swatch, text, chain);
+      bindWeightFocus(row, name, "bone");
       list.appendChild(row);
     }
     box.appendChild(list);
+    const chainNote = document.createElement("p");
+    chainNote.className = "help";
+    chainNote.textContent = "J marks a jiggle chain at runtime: the marked bone and the bones below it. Nothing jiggles until Jiggle physics is on in Animations, and it is not written into the exported file.";
+    box.appendChild(chainNote);
   }
   const env = document.createElement("label");
   env.className = "row";
@@ -562,17 +613,13 @@ function drawRig() {
   envTick.checked = showEnv;
   envTick.onchange = () => {
     showEnv = envTick.checked;
-    if (showEnv && !showBones) {
-      showBones = true;
-      boneTick.checked = true;
-    }
     paintMarkers();
   };
   env.append("Show envelopes", envTick);
   box.appendChild(env);
   const envNote = document.createElement("p");
   envNote.className = "help";
-  envNote.textContent = "Each color is one bone. Point at a name and that area brightens.";
+  envNote.textContent = "Each color is one bone. Point at a name and that area brightens. Click a marker or volume to solo it; click empty space to show all again.";
   box.appendChild(envNote);
   box.appendChild(eyeTools("env", ENVELOPE_BONES));
   fillEnvelopeKey(box, true);
@@ -621,19 +668,64 @@ function fillEnvelopeKey(host, withSlider) {
       slider.min = "0.5";
       slider.max = "2";
       slider.step = "0.05";
-      slider.value = String((job.markers?.envelopes || {})[bone] || 1);
+      // Match paint defaults in bodymath.DEFAULT_ENVELOPE_SCALES when unset.
+      const ENV_DEFAULT = {
+        neck_01: 0.55, clavicle_l: 0.8, clavicle_r: 0.8,
+        upperarm_l: 0.45, upperarm_r: 0.45, lowerarm_l: 0.5, lowerarm_r: 0.5,
+        spine_03: 0.55, calf_l: 0.85, calf_r: 0.85, foot_l: 0.65, foot_r: 0.65,
+      };
+      const stored = (job.markers?.envelopes || {})[bone];
+      slider.value = String(stored != null ? stored : (ENV_DEFAULT[bone] ?? 1));
       slider.onchange = () => postJSON("markers", { envelopes: { [bone]: Number(slider.value) } });
       row.appendChild(slider);
     }
     const hot = (on) => {
       row.classList.toggle("hot", on);
       if (on && stage.hiddenEnvs.has(bone)) return;
+      if (showHeat || showAnimHeat) {
+        if (!stage.soloEnv && !stage.soloBone) stage.setWeightBone(on ? bone : "");
+        return;
+      }
       stage.highlightEnvelope(on ? bone : "");
     };
     row.onmouseenter = () => hot(true);
     row.onmouseleave = () => hot(false);
+    bindWeightFocus(row, bone, "env");
     host.appendChild(row);
   }
+}
+
+/** Hover/click a bone or envelope name to isolate weight paint like volumes. */
+function bindWeightFocus(row, name, kind) {
+  row.style.cursor = "pointer";
+  row.onclick = (ev) => {
+    if (ev.target.closest("button.eye, input")) return;
+    if (!(showHeat || showAnimHeat)) {
+      if (kind === "env") stage.isolateEnvelope(name);
+      else stage.isolateBone(name);
+      return;
+    }
+    if (stage.soloBone === name || stage.soloEnv === name) {
+      stage.clearSolo();
+      stage.setWeightBone("");
+      return;
+    }
+    if (kind === "env") stage.isolateEnvelope(name);
+    else stage.isolateBone(name);
+    stage.setWeightBone(name);
+  };
+  if (kind !== "bone") return;
+  row.onmouseenter = () => {
+    row.classList.toggle("hot", true);
+    if ((showHeat || showAnimHeat) && !stage.soloEnv && !stage.soloBone) {
+      stage.setWeightBone(name);
+    }
+  };
+  row.onmouseleave = () => {
+    if (stage.soloBone === name || stage.soloEnv === name) return;
+    row.classList.remove("hot");
+    if (showHeat || showAnimHeat) stage.setWeightBone("");
+  };
 }
 
 function mountEnvLegend(host) {
@@ -656,9 +748,11 @@ function eyeTools(kind, names) {
     button.type = "button";
     button.textContent = text;
     button.onclick = () => {
+      stage.clearSolo();
       if (kind === "env") stage.setEnvelopesHidden(names, hidden);
       else stage.setBonesHidden(names, hidden);
       syncEyes(kind);
+      document.querySelectorAll(".dotrow, .env-key").forEach((row) => row.classList.remove("hot"));
       if (!hidden && (showHeat || showAnimHeat)) stage.setWeightBone("");
     };
     return button;
@@ -775,15 +869,53 @@ function setAnimWeights(on) {
 function drawAnimations() {
   const box = card("Motions");
   if (job.files.rig) {
+    const cam = document.createElement("label");
+    cam.className = "row";
+    const camTick = document.createElement("input");
+    camTick.type = "checkbox";
+    camTick.dataset.camLock = "1";
+    camTick.checked = lockMotionCamera;
+    camTick.onchange = () => {
+      lockMotionCamera = camTick.checked;
+      stage.setFollowCharacter(lockMotionCamera);
+    };
+    cam.append("Lock camera", camTick);
+    box.appendChild(cam);
+    const camNote = document.createElement("p");
+    camNote.className = "help";
+    camNote.textContent = "When on, the view stays on the character while a motion plays. Turn off to leave the camera still so they walk through the scene. The padlock above only freezes orbit.";
+    box.appendChild(camNote);
+    stage.setFollowCharacter(lockMotionCamera);
     const bones = document.createElement("label");
     bones.className = "row";
     const tick = document.createElement("input");
     tick.type = "checkbox";
     tick.dataset.skel = "1";
     tick.checked = showAnimBones;
-    tick.onchange = () => setAnimSkeleton(tick.checked);
+    tick.onchange = () => {
+      setAnimSkeleton(tick.checked);
+      const styleTick = panel.querySelector("input[data-bone-style]");
+      if (styleTick) styleTick.disabled = !tick.checked;
+    };
     bones.append("Show skeleton", tick);
     box.appendChild(bones);
+    const style = document.createElement("label");
+    style.className = "row";
+    const styleTick = document.createElement("input");
+    styleTick.type = "checkbox";
+    styleTick.dataset.boneStyle = "1";
+    styleTick.checked = boneStyle === "blender";
+    styleTick.disabled = !showAnimBones;
+    styleTick.onchange = () => {
+      boneStyle = styleTick.checked ? "blender" : "stick";
+      stage.setBoneStyle(boneStyle);
+    };
+    style.append("Blender bones", styleTick);
+    box.appendChild(style);
+    const styleNote = document.createElement("p");
+    styleNote.className = "help";
+    styleNote.textContent = "Octahedral bones like Blender. Turn on Show skeleton first. Stick figure stays the default.";
+    box.appendChild(styleNote);
     const env = document.createElement("label");
     env.className = "row";
     const envTick = document.createElement("input");
@@ -809,6 +941,22 @@ function drawAnimations() {
     weightNote.className = "help";
     weightNote.textContent = "Colors the last bind on the moving mesh. Click the body to paint one bone. Red is strong and blue is none. Click empty space to see every bone again. Envelopes hide while this is on.";
     box.appendChild(weightNote);
+    const jiggle = document.createElement("label");
+    jiggle.className = "row";
+    const jiggleTick = document.createElement("input");
+    jiggleTick.type = "checkbox";
+    jiggleTick.dataset.jiggle = "1";
+    jiggleTick.checked = !!job.animations?.jiggle;
+    jiggleTick.onchange = () => {
+      stage.setJiggle({ enabled: jiggleTick.checked, chains: job.markers?.jiggle || [] });
+      postJSON("anim-settings", { jiggle: jiggleTick.checked });
+    };
+    jiggle.append("Jiggle physics", jiggleTick);
+    box.appendChild(jiggle);
+    const jiggleNote = document.createElement("p");
+    jiggleNote.className = "help";
+    jiggleNote.textContent = "Spring motion on the chains marked with J on Rig, while a motion plays. Off, the baked clip plays exactly as before. Not written into the exported file.";
+    box.appendChild(jiggleNote);
     const note = document.createElement("p");
     note.className = "help";
     note.textContent = "Each color is one bone. Point at a name and that area brightens.";
@@ -820,10 +968,16 @@ function drawAnimations() {
     need.className = "help";
     need.textContent = "Bind the character on Rig before a motion can play. The mesh stays on screen until then.";
     box.appendChild(need);
+  } else if (job.rig_stale) {
+    const need = document.createElement("p");
+    need.className = "help";
+    need.textContent = "Markers changed. Bind & wear on Rig again before motions can play.";
+    box.appendChild(need);
   }
   const search = document.createElement("input");
   search.placeholder = "Search";
   search.value = query;
+  drawExport(box);
   box.appendChild(search);
   const families = ["all", ...new Set(library.map((clip) => clip.family))];
   const select = document.createElement("select");
@@ -836,7 +990,6 @@ function drawAnimations() {
   }
   box.appendChild(select);
   box.appendChild(fileButton("Import a motion", ".glb,.gltf", "motion"));
-  drawExport(box);
   drawSaved(box);
   const grid = document.createElement("div");
   grid.className = "library";
@@ -991,6 +1144,10 @@ function drawSaved(box) {
   box.appendChild(row);
 }
 
+function selectedExportFormats() {
+  return ["glb", "gltf", "fbx"].filter((fmt) => exportFormats[fmt]);
+}
+
 function drawExport(box) {
   const heading = document.createElement("h3");
   heading.className = "sub";
@@ -998,18 +1155,41 @@ function drawExport(box) {
   box.appendChild(heading);
   const note = document.createElement("p");
   note.className = "help";
-  note.textContent = "One file with the character and every saved motion.";
+  note.textContent = "One file per format with the character and every saved motion.";
   box.appendChild(note);
+  for (const [fmt, label] of [["glb", ".glb"], ["gltf", ".gltf"], ["fbx", ".fbx"]]) {
+    const row = document.createElement("label");
+    row.className = "row";
+    const tick = document.createElement("input");
+    tick.type = "checkbox";
+    tick.checked = !!exportFormats[fmt];
+    tick.onchange = () => {
+      exportFormats[fmt] = tick.checked;
+      const action = panel.querySelector("button[data-export]");
+      if (!action) return;
+      const picked = selectedExportFormats();
+      action.disabled = !job.files.rig || !!job.rig_stale || !Object.keys(job.animations?.clips || {}).length || !picked.length;
+      action.textContent = picked.length ? `Export ${picked.map((name) => `.${name}`).join(" + ")}` : "Pick a format";
+    };
+    row.append(label, tick);
+    box.appendChild(row);
+  }
   const where = document.createElement("p");
   where.className = "path";
-  where.textContent = job.export_ready ? `Saved to ${job.export_path}` : `Saves to ${job.export_path}`;
+  const folder = job.export_path || "";
+  const ready = (job.export_formats || []).map((fmt) => `…_${fmt}.${fmt}`).join(", ");
+  where.textContent = job.export_ready
+    ? `Saved ${ready || "typed files"} in ${folder}`
+    : `Saves as <name>_glb.glb / <name>_gltf.gltf / <name>_fbx.fbx in ${folder}`;
   box.appendChild(where);
   const action = document.createElement("button");
   action.type = "button";
   action.className = "primary";
-  action.textContent = "Export .glb";
+  action.dataset.export = "1";
+  const picked = selectedExportFormats();
+  action.textContent = picked.length ? `Export ${picked.map((name) => `.${name}`).join(" + ")}` : "Pick a format";
   const count = Object.keys(job.animations?.clips || {}).length;
-  action.disabled = !job.files.rig || !count;
+  action.disabled = !job.files.rig || !!job.rig_stale || !count || !picked.length;
   action.onclick = () => exportPackage(action);
   box.appendChild(action);
   if (job.export_ready) {
@@ -1046,7 +1226,7 @@ async function chooseClip(id) {
       body: JSON.stringify({ selected: id }),
     });
     if (job.animations) job.animations.selected = id;
-    panelKey = [view, showBones, job.running, job.steps[view]?.message, job.skeleton_seen, (job.off_body || []).join(), showEnv].join("|");
+    panelKey = [view, showBones, job.running, job.steps[view]?.message, job.skeleton_seen, (job.off_body || []).join(), showEnv, (job.markers?.jiggle || []).join(), job.animations?.jiggle].join("|");
   } catch (err) {
     window.alert(err.message || String(err));
   } finally {
@@ -1070,15 +1250,25 @@ async function clearClips() {
 }
 
 async function exportPackage(button) {
+  const formats = selectedExportFormats();
+  if (!formats.length) {
+    window.alert("Pick at least one export format.");
+    return;
+  }
   button.disabled = true;
   button.textContent = "Packaging…";
   posting = true;
   try {
-    const next = await api(`/api/jobs/${job.id}/export`, { method: "POST" });
+    const next = await api(`/api/jobs/${job.id}/export`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ formats }),
+    });
     job = next;
-    if (next.download) {
-      const name = next.download.split("/").pop();
-      const link = downloadAnchor(name, fileUrl(next.download), name);
+    const files = next.downloads?.length ? next.downloads : (next.download ? [next.download] : []);
+    for (const rel of files) {
+      const name = rel.split("/").pop();
+      const link = downloadAnchor(name, fileUrl(rel), name);
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -1089,6 +1279,15 @@ async function exportPackage(button) {
     posting = false;
     panelKey = "";
     render();
+  }
+}
+
+let rotateSnap = null;
+
+function zeroRotateSliders(box) {
+  for (const slider of box.querySelectorAll("input[type='range']")) {
+    slider.value = "0";
+    slider.dataset.last = "0";
   }
 }
 
@@ -1103,9 +1302,24 @@ function mountRotate() {
   if (!box) {
     box = document.createElement("div");
     box.className = "rotate";
+    const head = document.createElement("div");
+    head.className = "rotate-head";
     const who = document.createElement("b");
     who.className = "who";
-    box.appendChild(who);
+    const reset = document.createElement("button");
+    reset.type = "button";
+    reset.className = "rotate-reset";
+    reset.textContent = "Reset";
+    reset.title = "Undo Bend / Twist / Swing for this bone";
+    reset.onclick = () => {
+      if (!rotateSnap || !stage.picked) return;
+      stage.rotating = false;
+      zeroRotateSliders(box);
+      stage.restoreRotatePose(rotateSnap);
+      postJSON("markers", { joints: stage.joints, finger_tips: stage.fingerTips, moved: stage.picked });
+    };
+    head.append(who, reset);
+    box.appendChild(head);
     for (const [axis, label] of [["bend", "Bend"], ["twist", "Twist"], ["swing", "Swing"]]) {
       const row = document.createElement("label");
       row.className = "row";
@@ -1141,10 +1355,8 @@ function mountRotate() {
   const title = poseLabel(id);
   if (who.textContent !== title) {
     who.textContent = title;
-    for (const slider of box.querySelectorAll("input")) {
-      slider.value = "0";
-      slider.dataset.last = "0";
-    }
+    zeroRotateSliders(box);
+    rotateSnap = stage.captureRotatePose(id);
   }
 }
 
@@ -1363,7 +1575,7 @@ async function syncStage() {
   let mode = "empty";
   if (view === "source" && job.files.source) mode = `image:source.png:${job.steps.source?.updated || ""}`;
   else if (view === "tpose" && job.files.tpose) mode = `image:tpose.png:${job.steps.tpose?.updated || ""}`;
-  else if (view === "animations" && job.files.rig) mode = "play";
+  else if (view === "animations" && job.files.rig && !job.rig_stale) mode = "play";
   else if ((view === "markers" || view === "mesh" || view === "rig" || view === "animations" || rigging) && job.files.mesh) mode = "mesh";
   if (mode === shown) {
     if (mode === "mesh") paintMarkers();
@@ -1390,6 +1602,7 @@ async function syncStage() {
   }
   if (mode === "hold" || mode === "play") {
     await stage.loadRig(fileUrl("rig/rigged_animated.glb"), mode === "hold");
+    stage.setJiggle({ enabled: !!job.animations?.jiggle, chains: job.markers?.jiggle || [] });
     if (mode === "play" && job.animations?.selected) {
       await stage.playClip(job.animations.selected, motionUrl(job.animations.selected));
     }
@@ -1404,13 +1617,16 @@ function paintMarkers() {
     stage.clearOverlay();
     return;
   }
-  if (view === "rig" && showBones && job.running !== "rig") {
+  if (view === "rig" && job.running !== "rig" && (showBones || showEnv)) {
     stage.setBoneStyle(boneStyle);
     stage.setBones(det.joints, det.height, det.fingers || "five", det.finger_tips || null);
+    stage.setBoneOverlayVisible(showBones);
     stage.showEnvelopes(showEnv, det.envelopes || {});
   } else if (view === "markers" && det?.joints) {
+    stage.clearSolo();
     stage.setDots(det.joints, det.height, det.joints_off_body || [], det.off_body || [], []);
   } else {
+    stage.clearSolo();
     stage.clearOverlay();
   }
   if (view === "rig" && showHeat && job.files.rig && job.running !== "rig") {
