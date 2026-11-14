@@ -126,6 +126,16 @@ because the moved weight re-owned sub-mm edges (tissue bones touch
 millimetres. `logs/rig.txt` is stale (20:17 content, no
 `secondary` line) — the artifacts are the record.
 
+Half-baked weight bug found and fixed 2026-11-14: the steal branch
+appended the merged weights and then fell through into the plain
+`chosen` loop, so tissue verts got up to 8 entries and the full
+body weights outranked the tissue share at Blender's limit-total
+step. The branch is now if/else. Re-bound 00:19 with the fix
+(68 s): tissue totals rose to their intended share (breasts
+~37–38k, glutes ~29k) and tears fell to 19/22/24/22/52 — at or
+below the pre-tissue counts on every pose. Worst gaps still flat
+(~30–35 mm).
+
 Jiggle measured in Node on the real naga GLB, Walk, 4 s, jiggle run
 vs plain run: breasts swing 7.9°, glutes 3.1°, parents unmoved
 (0.03°), chains independent. `head` is off the table as a demo.

@@ -520,13 +520,17 @@ def paint(body, arm, height, det, secondary=()):
                 mtotal = sum(w for _, w in merged) or 1.0
                 for i, w in merged:
                     weights[names[i]].append((vi, w / mtotal))
-                    continue
-            for i, w in chosen:
-                weights[names[i]].append((vi, w / total))
-                if names[i].startswith(("index_", "middle_", "ring_", "pinky_", "thumb_")):
-                    finger_sum += w / total
-                if names[i] == "head":
-                    head_sum += w / total
+                    if names[i].startswith(("index_", "middle_", "ring_", "pinky_", "thumb_")):
+                        finger_sum += w / mtotal
+                    if names[i] == "head":
+                        head_sum += w / mtotal
+            else:
+                for i, w in chosen:
+                    weights[names[i]].append((vi, w / total))
+                    if names[i].startswith(("index_", "middle_", "ring_", "pinky_", "thumb_")):
+                        finger_sum += w / total
+                    if names[i] == "head":
+                        head_sum += w / total
     for name, pairs in weights.items():
         bins = {}
         for vi, w in pairs:
