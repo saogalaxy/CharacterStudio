@@ -193,6 +193,10 @@ every frame (plain baked clip — stiff is correct); the 23.5 s clip
 shows it ON with all four chains, Walk playing. So the spring runs
 in the second clip at the measured ~8° — visible on a close-up,
 not a cartoon bounce.
+Retuned exaggerated, 2026-11-14: stiffness 18→9, damping 6→2.5,
+drive 6→10, maxSwing 0.75→1.1 rad. Node full-loop on the real naga
+bind: Walk breasts 29.9°, glutes 11.8°; 8 s of Jog peaks at the
+63° clamp with no NaN and unmarked bones at 0.0°. Bump to `?v=bg09`.
 
 Also fixed while measuring: the spring compounded on bones the
 clip does not animate (the mixer never fully overwrites them), so

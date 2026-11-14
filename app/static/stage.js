@@ -793,10 +793,10 @@ export class Stage {
   _jiggleStep(dt) {
     if (!this.jiggleOn || !this.root || !this._jiggleBones.length) return;
     const step = Math.min(Math.max(dt, 1 / 240), 1 / 24);
-    const stiffness = 18;
-    const damping = 6;
-    const drive = 6;
-    const maxSwing = 0.75;
+    const stiffness = 9;
+    const damping = 2.5;
+    const drive = 10;
+    const maxSwing = 1.1;
     const maxVel = 24;
     const parentNow = new THREE.Quaternion();
     const boneNow = new THREE.Quaternion();
