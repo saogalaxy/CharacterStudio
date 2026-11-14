@@ -185,6 +185,19 @@ Rig 24 holds with all four tissue capsules, slider 1.0→1.5 widens
 the tube exactly 1.5×, hide works; Animations 21 holds with
 parent→pivot capsules. Bump to `?v=bg11`.
 
+Head-cape guard, 2026-11-14: the Head-isolate screenshot proved
+head owned head *plus torso*. Measured on the bind: 39,005 back
+verts 53–129 mm from the head joint. New veto in `paint` — below
+the skull line and farther than 0.03h from the head segment, head
+cannot win (face box exempt). Rebind: head-owned back verts below
+the skull line are now ZERO. Tears 19/22/24/22/52, worst gap moved
+to the user-dragged right shoulder (clavicle_r, edited this same
+session, ~50 mm) — the cape is gone, the shoulder seam being
+actively repositioned is now the worst spot. Note: envelope edits
+invalidate the bind and drop `animations.json`, so the jiggle
+switch is OFF again and the Walk fit is back to default — re-tick
+and re-fit before judging jiggle.
+
 Export helper text removed, 2026-11-14: the Animations panel
 showed a literal `<name>_glb.glb / …` placeholder plus an ellipsis
 char next to the Export button. Deleted the line; the format

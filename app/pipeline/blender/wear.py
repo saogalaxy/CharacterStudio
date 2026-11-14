@@ -419,6 +419,9 @@ def paint(body, arm, height, det, secondary=()):
     foot_r_z = float(heads[foot_r_i][2]) if foot_r_i is not None else None
     side = 0.06 * height
     collar_r = 0.035 * height
+    hair_r = 0.03 * height
+    face_half = 0.07 * height
+    spine_y = float(heads[spine03_i][1]) if spine03_i is not None else None
     coords = np.array([(body.matrix_world @ v.co)[:] for v in body.data.vertices], dtype=np.float64)
     # Tissue bones never win the nearest-bone search; the falloff below feeds
     # them instead, so the region stays predictable. The envelope scale acts
@@ -472,6 +475,16 @@ def paint(body, arm, height, det, secondary=()):
                     for i, name in enumerate(names):
                         if name.startswith(("upperarm_", "clavicle_")):
                             d[i] = 1e6
+            # Skull and close hair follow the head; the far neck, back, and
+            # lower chest do not — owning them to the head tears them off the
+            # spine. The face box keeps the jaw and cheeks on the head.
+            if (head_i is not None and head_z is not None and spine_y is not None
+                    and vert[2] < head_z - 0.03 * height
+                    and d[head_i] > hair_r):
+                face = (vert[1] < spine_y - 0.005 * height and abs(vert[0]) < face_half
+                        and vert[2] > head_z - 0.06 * height)
+                if not face:
+                    d[head_i] = 1e6
             # Sole / ankle: foot owns below the foot joint so calf does not wash out toes.
             if foot_l_i is not None and calf_l_i is not None and foot_l_z is not None:
                 if vert[2] < foot_l_z + 0.04 * height and vert[0] > -side:
