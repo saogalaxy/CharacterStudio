@@ -141,15 +141,20 @@ button.chain.on { border-color: #7ad0a0; background: #7ad0a0; color: #0a0c10; }
   display: inline-flex; align-items: center; justify-content: center;
   width: 16px; height: 16px; border: 1px solid var(--line); border-radius: 50%;
   color: var(--muted); font-size: 11px; line-height: 1; cursor: help;
-  position: relative; flex: none; font-style: normal;
+  position: static; flex: none; font-style: normal;
 }
-.tip:hover::after, .tip:focus::after {
-  content: attr(data-tip);
-  position: absolute; z-index: 50; bottom: 130%; left: 50%;
-  transform: translateX(-50%); width: max-content; max-width: 250px;
-  white-space: normal; text-align: left;
+.tip-pop {
+  position: fixed; z-index: 200;
   background: #11141a; border: 1px solid var(--line); border-radius: 8px;
   padding: 8px 10px; color: var(--text); font-size: 12px; font-weight: 400;
+  max-width: 250px; white-space: normal;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
 }
+@keyframes bannerFlash {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+.banner.flash { animation: bannerFlash 1s ease-in-out 3; }
 .env-pill { margin: 4px 0; }
 .env-pill-body[hidden] { display: none; }

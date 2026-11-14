@@ -345,6 +345,65 @@ function tip(text) {
   return el;
 }
 
+let blockedWarnKey = "";
+function flashBlocked(box, job, text) {
+  const key = [job.id, !!job.files.rig, !!job.rig_stale, (job.steps?.markers || {}).updated || ""].join("|");
+  if (key === blockedWarnKey) return;
+  blockedWarnKey = key;
+  const banner = document.createElement("div");
+  banner.className = "banner flash";
+  banner.textContent = text;
+  box.appendChild(banner);
+}
+
+let tipPop = null;
+function hideTip() {
+  if (tipPop) {
+    tipPop.remove();
+    tipPop = null;
+  }
+}
+function showTip(target) {
+  const text = target?.dataset?.tip;
+  if (!text) {
+    hideTip();
+    return;
+  }
+  if (tipPop && tipPop._for === target) return;
+  hideTip();
+  const pop = document.createElement("div");
+  pop.className = "tip-pop";
+  pop.textContent = text;
+  document.body.appendChild(pop);
+  pop._for = target;
+  tipPop = pop;
+  const rect = target.getBoundingClientRect();
+  const width = Math.min(250, pop.offsetWidth || 250);
+  const height = pop.offsetHeight || 60;
+  let left = Math.round(rect.left + rect.width / 2 - width / 2);
+  left = Math.max(8, Math.min(left, window.innerWidth - width - 8));
+  let top = Math.round(rect.bottom + 8);
+  if (top + height > window.innerHeight - 8) top = Math.round(rect.top - height - 8);
+  if (top < 8) top = 8;
+  pop.style.left = `${left}px`;
+  pop.style.top = `${top}px`;
+}
+document.addEventListener("mouseover", (event) => {
+  const hit = event.target?.closest?.(".tip");
+  if (hit) showTip(hit);
+  else hideTip();
+});
+document.addEventListener("mouseout", (event) => {
+  if (event.target?.closest?.(".tip")) hideTip();
+});
+document.addEventListener("focusin", (event) => {
+  const hit = event.target?.closest?.(".tip");
+  if (hit) showTip(hit);
+});
+document.addEventListener("focusout", hideTip);
+window.addEventListener("scroll", hideTip, true);
+window.addEventListener("resize", hideTip);
+
 function stopButton() {
   const el = button("Stop", () => postJSON("stop", {}));
   el.className = "stop";
@@ -478,14 +537,10 @@ function mirrorToggle(host, kind = "marker") {
     stage.setSymmetry(mirrorMarkers);
     if (view === "rig" && showBones) paintMarkers();
   };
-  row.append("Mirror left / right", tick);
-  host.appendChild(row);
-  const note = document.createElement("p");
-  note.className = "help";
-  note.textContent = kind === "joint"
+  row.append("Mirror left / right", tip(kind === "joint"
     ? "When on, dragging a left or right joint moves its pair. Turn off to place one side alone."
-    : "When on, moving one side moves the other. Turn off to adjust a single marker.";
-  host.appendChild(note);
+    : "When on, moving one side moves the other. Turn off to adjust a single marker."), tick);
+  host.appendChild(row);
   stage.setSymmetry(mirrorMarkers);
 }
 
@@ -498,12 +553,10 @@ function drawMarkers() {
     panel.appendChild(banner);
   }
   const box = card("Dots");
-  const help = document.createElement("p");
-  help.className = "help";
-  help.textContent = "Orange dots drag. Grab a white dot and it turns orange. Hover a dot and its name follows it, then fades out.";
-  box.appendChild(help);
+  const placeBtn = button("Place dots", () => postJSON("run/markers", {}), true, !job.can_run.markers);
+  placeBtn.title = "Orange dots drag. Grab a white dot and it turns orange. Hover a dot and its name follows it, then fades out.";
   mirrorToggle(box);
-  box.appendChild(button("Place dots", () => postJSON("run/markers", {}), true, !job.can_run.markers));
+  box.appendChild(placeBtn);
   box.appendChild(button("Reset dots", () => postJSON("markers", { reset: true, moved: "reset" }), false, !job.files.markers));
   panel.appendChild(box);
 }
@@ -514,10 +567,6 @@ function drawRig() {
     postJSON("skeleton/seen", {});
   }
   const box = card("Rig");
-  const help = document.createElement("p");
-  help.className = "help";
-  help.textContent = "Each finger has its own dot. Drag a dot to move it, or use Bend, Twist, and Swing to rotate that limb.";
-  box.appendChild(help);
   mirrorToggle(box, "joint");
   const heat = document.createElement("label");
   heat.className = "row";
@@ -532,7 +581,11 @@ function drawRig() {
     paintMarkers();
     drawPanel();
   };
-  heat.append("Weight paint", heatTick);
+  heat.append("Weight paint", tip(!job.files.rig
+    ? "Bind the character once. Weight paint uses that result."
+    : (job.rig_stale
+      ? "Last bind is stale after moving dots. Bind & wear again to refresh the paint."
+      : "Colors the last bind on the mesh. Click the body to paint one bone. Red is strong and blue is none. Click empty space to see every bone again.")), heatTick);
   box.appendChild(heat);
   const est = document.createElement("label");
   est.className = "row";
@@ -547,7 +600,7 @@ function drawRig() {
     paintMarkers();
     drawPanel();
   };
-  est.append("Estimate paint", estTick);
+  est.append("Estimate paint", tip("Rough nearest-bone preview from the current dots — not the bind. Move a dot, drop it, and the colors refresh. Click a bone name to solo its region."), estTick);
   box.appendChild(est);
   const arrows = document.createElement("label");
   arrows.className = "row";
@@ -561,22 +614,8 @@ function drawRig() {
     paintMarkers();
     drawPanel();
   };
-  arrows.append("Direction pins", arrowsTick);
+  arrows.append("Direction pins", tip("Pins show each joint's hinge axis: the limb bends around the pin."), arrowsTick);
   box.appendChild(arrows);
-  const arrowsNote = document.createElement("p");
-  arrowsNote.className = "help";
-  arrowsNote.textContent = "Estimate paint is a rough nearest-bone preview from the current dots — not the bind. Move a dot, drop it, and the colors refresh. Pins show each joint's hinge axis: the limb bends around the pin. Click a bone name to solo its region.";
-  box.appendChild(arrowsNote);
-  const heatNote = document.createElement("p");
-  heatNote.className = "help";
-  if (!job.files.rig) {
-    heatNote.textContent = "Bind the character once. Weight paint uses that result.";
-  } else if (job.rig_stale) {
-    heatNote.textContent = "Last bind is stale after moving dots. Skeleton and envelopes still follow the markers. Bind & wear again to refresh the paint.";
-  } else {
-    heatNote.textContent = "Point at a bone name below to paint that bone alone (red = strong, blue = none). Click a name to lock it; click empty space or Select all to show every bone again.";
-  }
-  box.appendChild(heatNote);
   const bones = document.createElement("label");
   bones.className = "row";
   const boneTick = document.createElement("input");
@@ -600,12 +639,8 @@ function drawRig() {
     boneStyle = styleTick.checked ? "blender" : "stick";
     stage.setBoneStyle(boneStyle);
   };
-  style.append("Blender bones", styleTick);
+  style.append("Blender bones", tip("Octahedral bones like Blender. Turn on Show skeleton first. Stick figure stays the default."), styleTick);
   box.appendChild(style);
-  const styleNote = document.createElement("p");
-  styleNote.className = "help";
-  styleNote.textContent = "Octahedral bones like Blender. Turn on Show skeleton first. Stick figure stays the default.";
-  box.appendChild(styleNote);
   mountPlacementMinimap(box);
   if (showBones && job.markers?.joints) {
     const names = visibleDots(job.markers.joints);
@@ -613,7 +648,9 @@ function drawRig() {
       if (!names.includes(extra)) names.push(extra);
     }
     const chains = new Set(job.markers?.jiggle || []);
-    box.appendChild(eyeTools("bone", names));
+    const boneTools = eyeTools("bone", names);
+    boneTools.appendChild(tip("Each finger has its own dot. Drag a dot to move it, or use Bend, Twist, and Swing to rotate that limb."));
+    box.appendChild(boneTools);
     const list = document.createElement("div");
     list.className = "dotlist";
     for (const name of names) {
@@ -653,10 +690,6 @@ function drawRig() {
       list.appendChild(row);
     }
     box.appendChild(list);
-    const chainNote = document.createElement("p");
-    chainNote.className = "help";
-    chainNote.textContent = "J marks a jiggle chain at runtime: the marked bone and the bones below it. Nothing jiggles until Jiggle physics is on in Animations, and it is not written into the exported file.";
-    box.appendChild(chainNote);
   }
   const env = document.createElement("label");
   env.className = "row";
@@ -1024,15 +1057,11 @@ function drawAnimations() {
     mountEnvLegend(box, "Each color is one bone. Point at a name and that area brightens.");
   }
   if (!job.files.rig) {
-    const need = document.createElement("p");
-    need.className = "help";
-    need.textContent = "Bind the character on Rig before a motion can play. The mesh stays on screen until then.";
-    box.appendChild(need);
+    flashBlocked(box, job, "Bind the character on Rig before a motion can play. The mesh stays on screen until then.");
   } else if (job.rig_stale) {
-    const need = document.createElement("p");
-    need.className = "help";
-    need.textContent = "Markers changed. Bind & wear on Rig again before motions can play.";
-    box.appendChild(need);
+    flashBlocked(box, job, "Markers changed. Bind & wear on Rig again before motions can play.");
+  } else {
+    blockedWarnKey = "";
   }
   const search = document.createElement("input");
   search.placeholder = "Search";
