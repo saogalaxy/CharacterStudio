@@ -203,6 +203,20 @@ from the top tear owners. invalidate_bind and clear_after no
 longer delete animations.json — the jiggle switch, selection, and
 fits survive marker/envelope edits now (that wipe is what kept
 turning the switch off).
+
+Estimate predicts tears, verified 2026-11-14: user observed tears sit on
+the estimate color edges. Checked against the bind: 179 of 208
+torn edges (86%, 15 distinct pairs) sit exactly on an estimate
+boundary, top pairs clavicle/spine_03 and the spine chain. The 29
+that do not: pelvis/thigh hip-crease edges have no estimate edge
+because pelvis is never a segment child and owns nothing in the
+LINKS map, and head/spine_02 cape edges sit where the estimate
+draws a spine_03 band between them. Only 37 percent of estimate
+boundaries ever tear: candidate seams, motion decides. Torn edges
+live in shared ownership (mean top-share 0.59), i.e. on gradients,
+not hard edges. First attempt misread 0 percent everywhere over a
+vertex index mismatch between Blender and GLB ordering; redone by
+owner-pair comparison instead.
 Pelvis extension tried and reverted, same day: extending the merge
 to the pelvis stretched the sit hip crease to 38 mm with an
 interpenetration (butt needs to seat with the hips, not ride the
