@@ -217,6 +217,16 @@ Blender naming test. Bump to bg16.
 
 Rename to play first, 2026-11-14: saved chips rename on double-click (prompt, persisted through anim-settings labels). The bind names baked actions from the label, so 1 Walk sorts first and autoplays in external viewers; in-app lookup tries id then label. Verified: API rename round-trip with no bind invalidation, isolated Blender copy_clip naming incl. blank-label fallback. Takes effect on the next bind.
 
+Tooltips done on both panels, 2026-11-14: every static help paragraph
+became a hover ? marker on its own row (Rig bone list, mirror,
+weights, estimate, pins, style, envelopes; Animations cam, bones,
+style, weights, jiggle status, export heading); envelope keys hide
+behind a shut-by-default pill; blocked-state warnings flash once
+on transition instead of sitting on the page. Also fixed: an
+unwired flashBlocked call that would have crashed the Animations
+panel on a stale rig, and a false stale-serve alarm that was
+PowerShell mangling unicode, not the server. Bump to bg16.
+
 Export plays bow first, 2026-11-14: Blender exports actions
 alphabetically, so Bow is clip 1 of 22 and 3D Viewer autoplays
 Animation 1. All clips ship (including library/source dupes like
