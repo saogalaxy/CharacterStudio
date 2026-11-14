@@ -1995,7 +1995,7 @@ export class Stage {
 
   _pick(ev) {
     this._aim(ev);
-    const hits = this.ray.intersectObjects(Object.values(this.dots), false);
+    const hits = this.ray.intersectObjects([...Object.values(this.dots), ...Object.values(this.extraDots || {})], false);
     return hits[0] ? hits[0].object : null;
   }
 
@@ -2074,6 +2074,10 @@ export class Stage {
     } else if (this.drag.kind === "finger") {
       this._shiftFinger(this.drag.id, delta);
       if (this.sym) this._mirrorShift(this.drag.id, delta);
+    } else if (this.drag.kind === "extra") {
+      this._shiftExtra(this.drag.id, delta);
+      if (this.sym) this._mirrorShift(this.drag.id, delta);
+      this.setBones(this.joints, this.H, this.fingers, null, true);
     } else {
       // Batch primary + mirror into one rebuild so the other side stays visible.
       this._nudgeJoint(this.drag.id, delta);
@@ -2097,6 +2101,18 @@ export class Stage {
     for (const child of spec.follow || []) {
       if (this.unlocked.has(child)) continue;
       this._shiftDot(child, delta);
+    }
+  }
+
+  _shiftExtra(id, delta) {
+    const frame = this.extraFrames?.[id];
+    if (!frame || !frame.head || !frame.tail) return;
+    frame.head = frame.head.map((c, i) => c + delta[i]);
+    frame.tail = frame.tail.map((c, i) => c + delta[i]);
+    const mesh = this.extraDots?.[id];
+    if (mesh) {
+      mesh.userData.blender = frame.head.slice();
+      mesh.position.copy(toThree(frame.head));
     }
   }
 
@@ -2229,6 +2245,7 @@ export class Stage {
         else this._shiftJoint(other, flip);
       }
       if (this.drag.kind === "finger" && this.fingerTips?.[other]) this._shiftFinger(other, flip);
+      if (this.drag.kind === "extra" && this.extraFrames?.[other]) this._shiftExtra(other, flip);
     }
   }
 
@@ -2240,9 +2257,11 @@ export class Stage {
     this.controls.enabled = !this.locked;
     if (this.drag) {
       const moved = this.drag.id;
+      const kind = this.drag.kind;
       this.drag = null;
       this._beginHintFade();
-      this.onJoints && this.onJoints(this.joints, moved);
+      if (kind === "extra") this.onExtra && this.onExtra(this._extraPost(), moved);
+      else this.onJoints && this.onJoints(this.joints, moved);
       return;
     }
     if (!heatClick || !press) return;
@@ -2250,6 +2269,15 @@ export class Stage {
     const dy = ev.clientY - press.y;
     if (dx * dx + dy * dy > 25) return;
     this._useHeatBone(this._pickHeat(ev));
+  }
+
+  _extraPost() {
+    const out = {};
+    for (const [name, frame] of Object.entries(this.extraFrames || {})) {
+      if (!frame || !frame.head || !frame.tail) continue;
+      out[name] = { head: frame.head.slice(), tail: frame.tail.slice() };
+    }
+    return out;
   }
 
   _showGrabLabel(id) {
@@ -2296,7 +2324,7 @@ export class Stage {
   }
 
   _placeGrabLabel() {
-    const mesh = this.dots[this.hintId] || this.skelDots?.byName[this.hintId];
+    const mesh = this.dots[this.hintId] || this.extraDots?.[this.hintId] || this.skelDots?.byName[this.hintId];
     const lab = this.grabLabel;
     if (!mesh || !lab || lab.hidden) return;
     const at = this._labelPoint(mesh);

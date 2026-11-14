@@ -128,6 +128,7 @@ async def markers(request):
             jiggle=body.get("jiggle"),
             fingers=body.get("fingers"),
             finger_tips=body.get("finger_tips"),
+            tissue=body.get("tissue"),
         )
     except ValueError as exc:
         raise web.HTTPBadRequest(text=str(exc))

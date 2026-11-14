@@ -192,26 +192,42 @@ class Job:
         return [str(r.get("name")) for r in rows if isinstance(r, dict) and r.get("name")]
 
     def extra_bone_frames(self):
-        """Pivot/tip frames for the Rig overlay. Display-only; never markers."""
-        path = self.dir / "rig" / "extra_bones.json"
-        if not path.is_file():
-            return {}
-        try:
-            rows = json.loads(path.read_text(encoding="utf-8"))
-        except (ValueError, OSError):
-            return {}
+        """Pivot/tip frames for the Rig overlay. File data plus markers.json
+        tissue overrides, so the overlay shows dropped positions pre-rebind."""
         frames = {}
-        for r in rows:
-            if not isinstance(r, dict) or not r.get("name"):
+        path = self.dir / "rig" / "extra_bones.json"
+        if path.is_file():
+            try:
+                rows = json.loads(path.read_text(encoding="utf-8"))
+            except (ValueError, OSError):
+                rows = []
+            for r in rows:
+                if not isinstance(r, dict) or not r.get("name"):
+                    continue
+                try:
+                    frames[str(r["name"])] = {
+                        "parent": str(r.get("parent") or ""),
+                        "head": [float(c) for c in r["head"]],
+                        "tail": [float(c) for c in r["tail"]],
+                    }
+                except (TypeError, ValueError, KeyError):
+                    continue
+        try:
+            det = json.loads(self.path("markers").read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            det = {}
+        for name, over in (det.get("tissue") or {}).items():
+            if not isinstance(over, dict):
                 continue
             try:
-                frames[str(r["name"])] = {
-                    "parent": str(r.get("parent") or ""),
-                    "head": [float(c) for c in r["head"]],
-                    "tail": [float(c) for c in r["tail"]],
-                }
-            except (TypeError, ValueError, KeyError):
+                head = [float(c) for c in over["head"]]
+                tail = [float(c) for c in over["tail"]]
+            except (TypeError, KeyError):
                 continue
+            if len(head) != 3 or len(tail) != 3:
+                continue
+            parent = frames.get(str(name), {}).get("parent", "")
+            frames[str(name)] = {"parent": parent, "head": head, "tail": tail}
         return frames
 
     def state(self):
@@ -627,7 +643,8 @@ class Studio:
         return job.state()
 
     def put_markers(self, job, markers=None, joints=None, reset=False, moved=None,
-                    envelopes=None, tags=None, jiggle=None, fingers=None, finger_tips=None):
+                    envelopes=None, tags=None, jiggle=None, fingers=None, finger_tips=None,
+                    tissue=None):
         det = json.loads(job.path("markers").read_text(encoding="utf-8"))
         cloud = job.cloud()
         if reset:
@@ -651,6 +668,35 @@ class Studio:
             _sync_markers(det)
             if cloud is not None and moved in ("chin", "groin") and markers is None:
                 bodymath._place_spine(cloud, det["joints"], float(det["height"]))
+        if tissue is not None:
+            # Pivot overrides for the bind-time tissue bones. A move here is a
+            # pose edit like a joint drag: the next bind builds from it.
+            if not isinstance(tissue, dict):
+                raise ValueError("tissue overrides must be a map")
+            known = set(job.extra_bones()) | set((det.get("tissue") or {}).keys())
+            stored = dict(det.get("tissue") or {})
+            for key, value in tissue.items():
+                name = str(key).strip()
+                if name not in known:
+                    raise ValueError(f"unknown tissue bone {name}")
+                if not value:
+                    stored.pop(name, None)
+                    continue
+                try:
+                    head = [float(c) for c in value["head"]]
+                    tail = [float(c) for c in value["tail"]]
+                except (TypeError, KeyError):
+                    raise ValueError(f"tissue bone {name} needs head and tail triples")
+                if len(head) != 3 or len(tail) != 3:
+                    raise ValueError(f"tissue bone {name} needs head and tail triples")
+                stored[name] = {"head": head, "tail": tail}
+            if stored != (det.get("tissue") or {}):
+                det["tissue"] = stored
+                tissue_changed = True
+            else:
+                tissue_changed = False
+        else:
+            tissue_changed = False
         if envelopes is not None:
             stored = dict(det.get("envelopes") or {})
             for key, value in envelopes.items():
@@ -707,7 +753,7 @@ class Studio:
             bad_m, bad_j = bodymath.listed_off(cloud, det)
             det["off_body"] = bad_m
             det["joints_off_body"] = bad_j
-        pose_edit = reset or markers is not None or joints is not None or finger_tips is not None
+        pose_edit = reset or markers is not None or joints is not None or finger_tips is not None or tissue_changed
         if pose_edit or envelopes is not None or tags is not None or fingers is not None:
             job.invalidate_bind(keep_preview=True)
         job.path("markers").write_text(json.dumps(det, indent=1), encoding="utf-8")
@@ -723,6 +769,8 @@ class Studio:
             message = "cloth and props adjusted"
         elif jiggle is not None:
             message = "jiggle chains adjusted"
+        elif tissue is not None and tissue_changed:
+            message = "tissue adjusted"
         elif fingers is not None:
             message = "fingers adjusted"
         elif reset:

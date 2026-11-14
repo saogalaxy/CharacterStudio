@@ -263,13 +263,16 @@ def fit_bones(arm, joints, height, zmin, fingers, snap, tips=None):
     bpy.ops.object.mode_set(mode="OBJECT")
 
 
-def add_secondary_bones(arm, body, joints, height):
+def add_secondary_bones(arm, body, joints, height, tissue=None):
     """Breast and glute bones, so jiggle physics moves tissue, not a body bone.
 
     Each bone sits inside the surface it drives and pivots at the chest wall or
     the pelvis, and ``paint`` weights the skin over it. A rigid child of
     spine_03/pelvis deforms exactly like its parent until something rotates it,
     so an unmarked job binds and plays as before.
+
+    ``tissue`` is the markers.json override map ({name: {head, tail}}): a
+    dragged pivot wins over auto-detection for that bone.
     """
     coords = np.array([(body.matrix_world @ v.co)[:] for v in body.data.vertices], dtype=np.float64)
     if not len(coords):
@@ -291,18 +294,39 @@ def add_secondary_bones(arm, body, joints, height):
     span = max(neck_z - spine_z, 0.02 * height)
     middle = 0.01 * height
     made = []
+    overridden = []
+    over = tissue if isinstance(tissue, dict) else {}
     for name, parent_name, hand, face in SECONDARY:
+        sigma = 0.045 * height if face == "front" else 0.05 * height
+        drag = over.get(name) if isinstance(over.get(name), dict) else None
+        if drag is not None:
+            try:
+                head = Vector([float(c) for c in drag["head"]])
+                tail = Vector([float(c) for c in drag["tail"]])
+            except (TypeError, ValueError, KeyError):
+                head = tail = None
+            if head is not None and (tail - head).length >= 1e-4:
+                made.append({
+                    "name": name,
+                    "parent": parent_name,
+                    "hand": hand,
+                    "place": face,
+                    "head": head,
+                    "tail": tail,
+                    "center": np.array([head.x, head.y, head.z], dtype=np.float64),
+                    "sigma": sigma,
+                })
+                overridden.append(name)
+                continue
         if face == "front":
             band = (zs > spine_z + 0.25 * span) & (zs < neck_z - 0.05 * span)
             base_y = spine_y
             out = fwd * (coords[:, 1] - base_y)
-            sigma = 0.045 * height
             room = 0.24 * height
         else:
             band = (zs > pelvis_z - 0.14 * height) & (zs < pelvis_z + 0.05 * height)
             base_y = pelvis_y
             out = -fwd * (coords[:, 1] - base_y)
-            sigma = 0.05 * height
             room = 0.22 * height
         mine = band & (np.abs(coords[:, 0]) < room) & (coords[:, 0] * hand > middle) & (out > 0.01 * height)
         if not mine.any():
@@ -331,7 +355,7 @@ def add_secondary_bones(arm, body, joints, height):
             "sigma": sigma,
         })
     if not made:
-        return []
+        return [], []
     bpy.context.view_layer.objects.active = arm
     bpy.ops.object.mode_set(mode="EDIT")
     eb = arm.data.edit_bones
@@ -345,7 +369,7 @@ def add_secondary_bones(arm, body, joints, height):
         bone.use_deform = True
         bone.parent = eb.get(rec["parent"])
     bpy.ops.object.mode_set(mode="OBJECT")
-    return made
+    return made, overridden
 
 
 def _faces_forward(arm, height):
@@ -913,10 +937,10 @@ def main():
     snap = template_snapshot(arm)
     fingers = det.get("fingers") or "five"
     fit_bones(arm, joints, height, zmin, fingers, snap, det.get("finger_tips") or {})
-    secondary = add_secondary_bones(arm, body, joints, height)
+    secondary, overruled = add_secondary_bones(arm, body, joints, height, det.get("tissue") or {})
     deform = sum(1 for b in arm.data.bones if b.use_deform)
     log("skeleton", {"bones": len(arm.data.bones), "source": "mesh2motion", "deform": deform, "fingers": fingers,
-                     "secondary": [r["name"] for r in secondary]})
+                     "secondary": [r["name"] for r in secondary], "tissue_overrides": overruled})
     body.parent = arm
     mod = body.modifiers.new("Armature", "ARMATURE")
     mod.object = arm

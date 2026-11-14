@@ -160,6 +160,26 @@ pivots sit 13–22 mm under the surface on the correct side (breasts
 front, glutes back). Bump to `?v=bg07`; needs a full app relaunch,
 since the running server predates the new state key.
 
+Tissue pivots are draggable, 2026-11-14: the Rig dots were
+display-only, so a misplaced pivot could not be corrected. Dropping
+a tissue dot now POSTs `markers.tissue` (`{name: {head, tail}}`,
+`null` clears back to auto); it validates against
+`extra_bones.json`, merges into `markers.json`, invalidates the bind
+like a joint drag, and the next bind builds from it
+(`tissue_overrides` in the skeleton log). The overlay merges the
+override pre-rebind so the dots stay where dropped. Verified
+end-to-end on a scratch headless server (:8766): bad name → 400
+with no state change; +5 mm test override → stored, `rig_stale`,
+frames merged; rebind consumed it (`extra_bones.json` shows the
+offset); cleared → rebound to pristine auto placement. The desktop
+app on :8765 was untouched. Bump to `?v=bg08`; relaunch required
+(new state key + new JS).
+
+Export helper text removed, 2026-11-14: the Animations panel
+showed a literal `<name>_glb.glb / …` placeholder plus an ellipsis
+char next to the Export button. Deleted the line; the format
+checkboxes and the Export/Show-in-folder buttons already say it.
+
 Also fixed while measuring: the spring compounded on bones the
 clip does not animate (the mixer never fully overwrites them), so
 a marked `spine_03` spun the left index finger 180°. `_jiggleStep`

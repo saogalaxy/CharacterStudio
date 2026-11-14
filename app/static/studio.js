@@ -1,4 +1,4 @@
-import { Stage, ENVELOPE_BONES, boneLabel, bonePlace, dotColorCss, envelopeColorCss, poseLabel, visibleDots } from "./stage.js?v=bg07";
+import { Stage, ENVELOPE_BONES, boneLabel, bonePlace, dotColorCss, envelopeColorCss, poseLabel, visibleDots } from "./stage.js?v=bg08";
 import { mountPlacementMinimap } from "./placement-minimap.js?v=af75";
 
 const STEPS = [
@@ -65,6 +65,7 @@ async function boot() {
   library = (await api("/api/motion-library")).clips;
   stage = new Stage(stageBox);
   stage.onJoints = (joints, moved) => postJSON("markers", { joints, finger_tips: stage.fingerTips, moved });
+  stage.onExtra = (tissue, moved) => postJSON("markers", { tissue, moved });
   stage.onPick = () => { if (view === "rig") mountRotate(); };
   stage.onIsolate = (kind, name) => {
     if (kind === "bone" || kind === "env") syncEyes(kind);
@@ -1159,13 +1160,6 @@ function selectedExportFormats() {
   return ["glb", "gltf", "fbx"].filter((fmt) => exportFormats[fmt]);
 }
 
-// Mirrors Job.export_slug in app/pipeline/jobs.py: lowercase, anything that
-// is not a letter or number becomes "_".
-function exportSlug(name) {
-  const slug = String(name || "character").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "_").replace(/^_+|_+$/g, "");
-  return slug || "character";
-}
-
 function drawExport(box) {
   const heading = document.createElement("h3");
   heading.className = "sub";
@@ -1192,16 +1186,8 @@ function drawExport(box) {
     row.append(label, tick);
     box.appendChild(row);
   }
-  const where = document.createElement("p");
-  where.className = "path";
-  const folder = job.export_path || "";
-  const slug = exportSlug(job.name);
-  const ready = (job.export_formats || []).map((fmt) => `${slug}_${fmt}.${fmt}`).join(", ");
-  where.textContent = job.export_ready
-    ? `Saved ${ready || "typed files"} in ${folder}`
-    : `Saves as ${slug}_glb.glb / ${slug}_gltf.gltf / ${slug}_fbx.fbx in ${folder}`;
-  box.appendChild(where);
   const action = document.createElement("button");
+  box.appendChild(action);
   action.type = "button";
   action.className = "primary";
   action.dataset.export = "1";
