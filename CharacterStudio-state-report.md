@@ -204,6 +204,13 @@ longer delete animations.json — the jiggle switch, selection, and
 fits survive marker/envelope edits now (that wipe is what kept
 turning the switch off).
 
+Sit fold vs stretch, 2026-11-14: the belly-button tear the user
+sees is fold crumple in deep sit, not stretch. The gate samples
+no torn edges in that zone; stills show idle clean, walk clean,
+sit crumpled at the belly/hip fold. Tradeoff on record: the
+merge traded distributed micro-tears for a concentrated
+macro-fold. Strictly better for walk/idle, a wash for deep sit.
+
 Estimate predicts tears, verified 2026-11-14: user observed tears sit on
 the estimate color edges. Checked against the bind: 179 of 208
 torn edges (86%, 15 distinct pairs) sit exactly on an estimate
