@@ -1,4 +1,4 @@
-import { Stage, ENVELOPE_BONES, boneLabel, bonePlace, dotColorCss, envelopeColorCss, poseLabel, visibleDots } from "./stage.js?v=bg06";
+import { Stage, ENVELOPE_BONES, boneLabel, bonePlace, dotColorCss, envelopeColorCss, poseLabel, visibleDots } from "./stage.js?v=bg07";
 import { mountPlacementMinimap } from "./placement-minimap.js?v=af75";
 
 const STEPS = [
@@ -1639,6 +1639,7 @@ function paintMarkers() {
   if (view === "rig" && job.running !== "rig" && (showBones || showEnv)) {
     stage.setBoneStyle(boneStyle);
     stage.setBones(det.joints, det.height, det.fingers || "five", det.finger_tips || null);
+    stage.setExtraBones(job.extra_bone_frames || {});
     stage.setBoneOverlayVisible(showBones);
     stage.showEnvelopes(showEnv, det.envelopes || {});
   } else if (view === "markers" && det?.joints) {

@@ -145,6 +145,21 @@ Armed on `naga_hd_caa97a` through the API: `jiggle` is
 selected, `rig_stale` false. The desktop window has not been
 reopened since the rebind.
 
+Rig overlay for tissue bones, 2026-11-14: the Rig 3D view could not
+show them — dots and octa segments come only from
+`markers.json` joints × `LINKS`, and tissue bones live in neither
+(the list rows showed because those merge `extra_bones`, but the 3D
+view had nothing to draw; verified through the CLI: the joints list
+has no tissue entries). `state()` now also exposes
+`extra_bone_frames` (head/tail/parent from `rig/extra_bones.json`),
+and the Rig screen draws them display-only: unpickable dots at the
+pivots plus parent→pivot and pivot→tip octas, honoring
+hide/solo/overlay. Nothing is merged into `this.joints`, so they
+can never be dragged or POSTed as markers. Placement sanity:
+pivots sit 13–22 mm under the surface on the correct side (breasts
+front, glutes back). Bump to `?v=bg07`; needs a full app relaunch,
+since the running server predates the new state key.
+
 Also fixed while measuring: the spring compounded on bones the
 clip does not animate (the mixer never fully overwrites them), so
 a marked `spine_03` spun the left index finger 180°. `_jiggleStep`

@@ -191,6 +191,29 @@ class Job:
             return []
         return [str(r.get("name")) for r in rows if isinstance(r, dict) and r.get("name")]
 
+    def extra_bone_frames(self):
+        """Pivot/tip frames for the Rig overlay. Display-only; never markers."""
+        path = self.dir / "rig" / "extra_bones.json"
+        if not path.is_file():
+            return {}
+        try:
+            rows = json.loads(path.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            return {}
+        frames = {}
+        for r in rows:
+            if not isinstance(r, dict) or not r.get("name"):
+                continue
+            try:
+                frames[str(r["name"])] = {
+                    "parent": str(r.get("parent") or ""),
+                    "head": [float(c) for c in r["head"]],
+                    "tail": [float(c) for c in r["tail"]],
+                }
+            except (TypeError, ValueError, KeyError):
+                continue
+        return frames
+
     def state(self):
         files = {
             "source": self.path("source").is_file(),
@@ -233,6 +256,7 @@ class Job:
             "off_body": off,
             "joints_off_body": joff,
             "extra_bones": self.extra_bones(),
+            "extra_bone_frames": self.extra_bone_frames(),
             "skeleton_seen": seen,
             "rig_stale": stale,
             "animations": anim,

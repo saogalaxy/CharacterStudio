@@ -558,6 +558,8 @@ export class Stage {
     this.H = 1;
     this.joints = {};
     this.dots = {};
+    this.extraFrames = {};
+    this.extraDots = {};
     this.bones = null;
     this.boneStyle = "stick";
     this.boneOverlay = true;
@@ -648,6 +650,7 @@ export class Stage {
   clearOverlay() {
     this._clearDots();
     this._dropBones();
+    this.extraFrames = {};
     this.envelopes.clear();
     this.fingerTips = null;
     this.picked = null;
@@ -1247,7 +1250,40 @@ export class Stage {
     }
     const picked = this.dots[this.picked];
     if (picked && picked.userData.kind === "joint") picked.scale.setScalar(1.45);
+    this._drawExtraDots();
     this._applyBoneVisibility();
+  }
+
+  // Tissue bones from rig/extra_bones.json. Display-only: dots live in
+  // this.extraDots (never this.dots, so the picker and drag code ignore
+  // them) and the octas come from _boneSegments. Never merged into
+  // this.joints, so they can never be dragged or POSTed as markers.
+  setExtraBones(frames) {
+    this.extraFrames = frames || {};
+    if ((this.drag || this.rotating) && this.mode === "mesh") return;
+    this._drawBones();
+    this._drawExtraDots();
+    this._applyBoneVisibility();
+  }
+
+  _drawExtraDots() {
+    for (const mesh of Object.values(this.extraDots || {})) this.scene.remove(mesh);
+    this.extraDots = {};
+    if (this.mode === "play" || this.mode === "pose") return;
+    if (!this.boneOverlay) return;
+    for (const [name, frame] of Object.entries(this.extraFrames || {})) {
+      if (!frame || !frame.head) continue;
+      const mesh = new THREE.Mesh(
+        new THREE.SphereGeometry(this.H * 0.01, 12, 10),
+        new THREE.MeshBasicMaterial({ color: dotColor(name), depthTest: false }),
+      );
+      mesh.position.copy(toThree(frame.head));
+      mesh.userData = { kind: "extra", id: name, blender: frame.head.slice() };
+      mesh.visible = this._boneVisible(name);
+      mesh.renderOrder = 6;
+      this.scene.add(mesh);
+      this.extraDots[name] = mesh;
+    }
   }
 
   setBoneHidden(name, hidden) {
@@ -1308,6 +1344,9 @@ export class Stage {
   _applyBoneVisibility() {
     for (const [name, mesh] of Object.entries(this.dots)) {
       if (mesh.userData.kind !== "joint" && mesh.userData.kind !== "finger") continue;
+      mesh.visible = this._boneVisible(name);
+    }
+    for (const [name, mesh] of Object.entries(this.extraDots || {})) {
       mesh.visible = this._boneVisible(name);
     }
     if (this.bones) this.bones.visible = this.boneOverlay;
@@ -1642,6 +1681,14 @@ export class Stage {
       if (!this._linkVisible(a, b)) continue;
       segs.push([toThree(this.joints[a]), toThree(this.joints[b])]);
     }
+    // Tissue bones live in extra_bones.json, not markers.json, so LINKS never
+    // covers them. Drawn display-only: parent to pivot, pivot to tip.
+    for (const [name, frame] of Object.entries(this.extraFrames || {})) {
+      const parent = frame && frame.parent;
+      if (!parent || !this.joints?.[parent] || !frame.head || !frame.tail) continue;
+      if (this._linkVisible(parent, name)) segs.push([toThree(this.joints[parent]), toThree(frame.head)]);
+      if (this._linkVisible(name, name)) segs.push([toThree(frame.head), toThree(frame.tail)]);
+    }
     if (!this.soloBone) {
       for (const [a, b] of this._fingerSegs || []) {
         segs.push([toThree(a), toThree(b)]);
@@ -1830,8 +1877,10 @@ export class Stage {
 
   _clearDots() {
     for (const mesh of Object.values(this.dots)) this.scene.remove(mesh);
+    for (const mesh of Object.values(this.extraDots || {})) this.scene.remove(mesh);
     for (const lab of Object.values(this.labels)) lab.remove();
     this.dots = {};
+    this.extraDots = {};
     this.labels = {};
   }
 
