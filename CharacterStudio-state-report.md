@@ -201,13 +201,19 @@ and re-fit before judging jiggle.
 Estimate paint + direction arrows, 2026-11-14: Rig gets an
 "Estimate paint" tick (rough nearest-segment preview from the live
 dots, off/whole-mesh/soloed-bone, recomputed on drop — no bind
-needed) and a "Direction arrows" tick (per-bone aim arrows that
-follow drags). Both viewer-local, nothing persisted. Verified in
-Node on the real naga mesh+markers: 1.43M verts colored, head owns
-the cape band in the estimate, solo-head dims the rest, second
-refresh is a no-op, 26 arrows (2 when head is soloed). No direct
+needed) and direction pins (per-joint hinge axes that follow drags:
+cross of incoming/outgoing bone, lateral fallback). Both
+viewer-local, nothing persisted. Verified in Node on the real naga
+mesh+markers: 1.43M verts colored, head owns the cape band in the
+estimate, solo-head dims the rest, second refresh is a no-op,
+26 pins (elbow/knee/spine lateral, hide cascades). No direct
 weight painting exists — weights are computed; dots, envelopes,
 tags, and now the estimate are the controls. Bump to `?v=bg12`.
+
+Robustness + hinge pins, 2026-11-14: estimate compute is
+token-guarded with error logging, progress cursor, material-array
+safety, and skips heat meshes; along-bone arrows replaced by hinge
+pins (the old ones just retraced the skeleton). Bump to `?v=bg13`.
 
 Export helper text removed, 2026-11-14: the Animations panel
 showed a literal `<name>_glb.glb / …` placeholder plus an ellipsis

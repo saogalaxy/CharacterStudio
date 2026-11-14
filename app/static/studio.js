@@ -1,4 +1,4 @@
-import { Stage, ENVELOPE_BONES, boneLabel, bonePlace, dotColorCss, envelopeColorCss, poseLabel, visibleDots } from "./stage.js?v=bg12";
+import { Stage, ENVELOPE_BONES, boneLabel, bonePlace, dotColorCss, envelopeColorCss, poseLabel, visibleDots } from "./stage.js?v=bg13";
 import { mountPlacementMinimap } from "./placement-minimap.js?v=af75";
 
 const STEPS = [
@@ -550,11 +550,11 @@ function drawRig() {
     paintMarkers();
     drawPanel();
   };
-  arrows.append("Direction arrows", arrowsTick);
+  arrows.append("Direction pins", arrowsTick);
   box.appendChild(arrows);
   const arrowsNote = document.createElement("p");
   arrowsNote.className = "help";
-  arrowsNote.textContent = "Estimate paint is a rough nearest-bone preview from the current dots — not the bind. Move a dot, drop it, and the colors refresh. Arrows show each bone's aim. Click a bone name to solo its region.";
+  arrowsNote.textContent = "Estimate paint is a rough nearest-bone preview from the current dots — not the bind. Move a dot, drop it, and the colors refresh. Pins show each joint's hinge axis: the limb bends around the pin. Click a bone name to solo its region.";
   box.appendChild(arrowsNote);
   const heatNote = document.createElement("p");
   heatNote.className = "help";

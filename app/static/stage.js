@@ -1399,7 +1399,9 @@ export class Stage {
   _estimateMesh() {
     if (!this.root) return null;
     let found = null;
-    this.root.traverse((obj) => { if (!found && obj.isMesh) found = obj; });
+    this.root.traverse((obj) => {
+      if (!found && obj.isMesh && !obj.userData.heat) found = obj;
+    });
     return found;
   }
 
@@ -1428,27 +1430,36 @@ export class Stage {
     const owners = new Uint8Array(count);
     const step = (start) => {
       if (token !== this._estToken) return;
-      const end = Math.min(count, start + 150000);
-      for (let i = start; i < end; i++) {
-        const px = pos[i * 3], py = pos[i * 3 + 1], pz = pos[i * 3 + 2];
-        let best = 0, bestD = Infinity;
-        for (let s = 0; s < segs.length; s++) {
-          const sg = segs[s];
-          const abx = sg.b.x - sg.a.x, aby = sg.b.y - sg.a.y, abz = sg.b.z - sg.a.z;
-          const denom = abx * abx + aby * aby + abz * abz + 1e-12;
-          let t = ((px - sg.a.x) * abx + (py - sg.a.y) * aby + (pz - sg.a.z) * abz) / denom;
-          t = t < 0 ? 0 : t > 1 ? 1 : t;
-          const dx = px - (sg.a.x + abx * t), dy = py - (sg.a.y + aby * t), dz = pz - (sg.a.z + abz * t);
-          const dd = dx * dx + dy * dy + dz * dz;
-          if (dd < bestD) { bestD = dd; best = s; }
+      try {
+        const end = Math.min(count, start + 100000);
+        for (let i = start; i < end; i++) {
+          const px = pos[i * 3], py = pos[i * 3 + 1], pz = pos[i * 3 + 2];
+          let best = 0, bestD = Infinity;
+          for (let s = 0; s < segs.length; s++) {
+            const sg = segs[s];
+            const abx = sg.b.x - sg.a.x, aby = sg.b.y - sg.a.y, abz = sg.b.z - sg.a.z;
+            const denom = abx * abx + aby * aby + abz * abz + 1e-12;
+            let t = ((px - sg.a.x) * abx + (py - sg.a.y) * aby + (pz - sg.a.z) * abz) / denom;
+            t = t < 0 ? 0 : t > 1 ? 1 : t;
+            const dx = px - (sg.a.x + abx * t), dy = py - (sg.a.y + aby * t), dz = pz - (sg.a.z + abz * t);
+            const dd = dx * dx + dy * dy + dz * dz;
+            if (dd < bestD) { bestD = dd; best = s; }
+          }
+          owners[i] = best;
         }
-        owners[i] = best;
+      } catch (err) {
+        console.error("estimate paint failed:", err);
+        if (token === this._estToken) this._estToken++;
+        if (this.box) this.box.style.cursor = "";
+        return;
       }
       if (end < count) { setTimeout(() => step(end), 0); return; }
       if (token !== this._estToken) return;
       this._estOwners = owners;
+      if (this.box) this.box.style.cursor = "";
       this._paintEstimate();
     };
+    if (this.box) this.box.style.cursor = "progress";
     step(0);
   }
 
@@ -1457,11 +1468,15 @@ export class Stage {
     this._estSegs = [];
     this._estStamp = "";
     this._estMesh = null;
+    if (this.box) this.box.style.cursor = "";
     const mesh = this._estimateMesh();
+    if (mesh && mesh.geometry.getAttribute("color")) mesh.geometry.deleteAttribute("color");
     if (mesh && mesh.material) {
-      mesh.material.vertexColors = false;
-      mesh.material.needsUpdate = true;
-      if (mesh.geometry.getAttribute("color")) mesh.geometry.deleteAttribute("color");
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const mat of mats) {
+        mat.vertexColors = false;
+        mat.needsUpdate = true;
+      }
     }
   }
 
@@ -1488,9 +1503,12 @@ export class Stage {
       }
     }
     attr.needsUpdate = true;
-    if (mesh.material && !mesh.material.vertexColors) {
-      mesh.material.vertexColors = true;
-      mesh.material.needsUpdate = true;
+    const mats = mesh.material ? (Array.isArray(mesh.material) ? mesh.material : [mesh.material]) : [];
+    for (const mat of mats) {
+      if (!mat.vertexColors) {
+        mat.vertexColors = true;
+        mat.needsUpdate = true;
+      }
     }
   }
 
@@ -1514,32 +1532,66 @@ export class Stage {
     if (!this.wantArrows || this.mode !== "mesh" || !this.joints) return;
     const solo = this._soloSet();
     const vis = (a, b) => (!solo || solo.has(a) || solo.has(b)) && !this.hiddenBones.has(a) && !this.hiddenBones.has(b);
-    const group = new THREE.Group();
-    const add = (from, to, name) => {
-      const dir = to.clone().sub(from);
-      const len = dir.length();
-      if (len < 1e-4) return;
-      dir.divideScalar(len);
-      const show = Math.min(len * 0.55, Math.max(this.H, 0.2) * 0.06);
-      const arrow = new THREE.ArrowHelper(dir, from, show, dotColor(name), show * 0.35, show * 0.2);
-      arrow.line.material.transparent = true;
-      arrow.line.material.opacity = 0.9;
-      arrow.line.material.depthTest = false;
-      arrow.cone.material.transparent = true;
-      arrow.cone.material.opacity = 0.9;
-      arrow.cone.material.depthTest = false;
-      arrow.renderOrder = 7;
-      group.add(arrow);
+    // Hinge pin per joint: cross of incoming/outgoing bone directions, with a
+    // lateral fallback for straight chains. The limb bends around the pin,
+    // so the pin — not the bone line — is the travel reference for placement.
+    const pinDir = (a, at, b) => {
+      let ix = at[0] - a[0], iy = at[1] - a[1], iz = at[2] - a[2];
+      let ox = b[0] - at[0], oy = b[1] - at[1], oz = b[2] - at[2];
+      const il = Math.hypot(ix, iy, iz) || 1, ol = Math.hypot(ox, oy, oz) || 1;
+      ix /= il; iy /= il; iz /= il; ox /= ol; oy /= ol; oz /= ol;
+      let px = iy * oz - iz * oy, py = iz * ox - ix * oz, pz = ix * oy - iy * ox;
+      const l = Math.hypot(px, py, pz);
+      if (l < 0.2) return new THREE.Vector3(1, 0, 0);
+      return new THREE.Vector3(px / l, pz / l, -py / l);
     };
+    const group = new THREE.Group();
+    const pinLen = Math.max(this.H, 0.2) * 0.035;
+    const addPin = (at, p, name) => {
+      const o = toThree(at);
+      const g = new THREE.Group();
+      g.userData.id = name;
+      const mat = new THREE.MeshBasicMaterial({ color: dotColor(name), transparent: true, opacity: 0.95, depthTest: false });
+      const a = p.clone().multiplyScalar(-pinLen / 2).add(o);
+      const b = p.clone().multiplyScalar(pinLen / 2).add(o);
+      const line = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([a, b]),
+        new THREE.LineBasicMaterial({ color: dotColor(name), transparent: true, opacity: 0.9, depthTest: false }),
+      );
+      line.renderOrder = 7;
+      g.add(line);
+      for (const s of [1, -1]) {
+        const cone = new THREE.Mesh(new THREE.ConeGeometry(pinLen * 0.12, pinLen * 0.28, 10), mat);
+        cone.quaternion.setFromUnitVectors(Y_AXIS, p.clone().multiplyScalar(s));
+        cone.position.copy(o).addScaledVector(p, s * pinLen * 0.5);
+        cone.renderOrder = 7;
+        g.add(cone);
+      }
+      group.add(g);
+    };
+    const childrenOf = {};
+    const parentOf = {};
     for (const [a, b] of LINKS) {
-      if (!this.joints[a] || !this.joints[b] || !vis(a, b)) continue;
-      add(toThree(this.joints[a]), toThree(this.joints[b]), b);
+      (childrenOf[a] = childrenOf[a] || []).push(b);
+      if (!parentOf[b]) parentOf[b] = a;
+    }
+    for (const id of Object.keys(this.joints)) {
+      const kids = childrenOf[id] || [];
+      if (!kids.length) continue;
+      const par = parentOf[id];
+      if (par && !vis(par, id)) continue;
+      if (!par && solo && !solo.has(id)) continue;
+      if (!par && this.hiddenBones.has(id)) continue;
+      const p = par
+        ? pinDir(this.joints[par], this.joints[id], this.joints[kids[0]])
+        : new THREE.Vector3(1, 0, 0);
+      addPin(this.joints[id], p, id);
     }
     for (const [name, frame] of Object.entries(this.extraFrames || {})) {
       if (!frame || !frame.head || !frame.tail) continue;
       const parent = frame.parent;
       if (!parent || !this.joints[parent] || !vis(parent, name)) continue;
-      add(toThree(frame.head), toThree(frame.tail), name);
+      addPin(frame.head, pinDir(this.joints[parent], frame.head, frame.tail), name);
     }
     if (!group.children.length) return;
     this.scene.add(group);
@@ -1828,6 +1880,7 @@ export class Stage {
       this._dropHeat();
       this.heatRoot = gltf.scene;
       this.heatMesh = mesh;
+      mesh.userData.heat = true;
       this.heatUrl = url;
       this._heatPainted = null;
       this.scene.add(gltf.scene);
