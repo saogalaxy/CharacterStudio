@@ -204,6 +204,8 @@ longer delete animations.json — the jiggle switch, selection, and
 fits survive marker/envelope edits now (that wipe is what kept
 turning the switch off).
 
+Rename to play first, 2026-11-14: saved chips rename on double-click (prompt, persisted through anim-settings labels). The bind names baked actions from the label, so 1 Walk sorts first and autoplays in external viewers; in-app lookup tries id then label. Verified: API rename round-trip with no bind invalidation, isolated Blender copy_clip naming incl. blank-label fallback. Takes effect on the next bind.
+
 Export plays bow first, 2026-11-14: Blender exports actions
 alphabetically, so Bow is clip 1 of 22 and 3D Viewer autoplays
 Animation 1. All clips ship (including library/source dupes like

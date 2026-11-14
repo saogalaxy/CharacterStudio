@@ -664,13 +664,15 @@ def _armature_height(arm):
     return (max(zs) - min(zs)) if zs else 1.0
 
 
-def copy_clip(dst, src, clip_id):
+def copy_clip(dst, src, clip_id, action_name=None):
     """Bake library motion onto dst with parent-space rest correction.
 
     Raw local quaternions assume matching bone axes. After fit_bones the
     character's parent-space rests diverge, so idle/walk pull in a lean and
     yank the hips. Conjugate each source basis rotation into dst axes, and
     only transfer scaled root location (never raw pelvis translation).
+    The baked action takes the user's clip label when one is set, so the
+    export order follows their naming ("1 Walk" autoplays first).
     """
     if src.animation_data is None or src.animation_data.action is None:
         raise RuntimeError(f"{clip_id} has no action")
@@ -679,7 +681,8 @@ def copy_clip(dst, src, clip_id):
     if end <= start:
         end = start + 1
     dst.animation_data_create()
-    action = bpy.data.actions.new(clip_id)
+    name = (action_name or "").strip() or clip_id
+    action = bpy.data.actions.new(name)
     action.use_fake_user = True
     dst.animation_data.action = action
     if hasattr(action, "slots") and hasattr(dst.animation_data, "action_slot"):
@@ -1005,6 +1008,19 @@ def main():
     mod = body.modifiers.new("Armature", "ARMATURE")
     mod.object = arm
     paint(body, arm, height, det, secondary)
+    # Action names follow the user's clip labels so the export order follows
+    # their naming ("1 Walk" sorts first and autoplays in viewers).
+    clip_labels = {}
+    anim_path = os.path.join(os.path.dirname(os.path.normpath(out_dir)), "animations.json")
+    if os.path.isfile(anim_path):
+        try:
+            clip_labels = {
+                str(cid): (str(row.get("label") or "").strip() or str(cid))
+                for cid, row in (json.load(open(anim_path, encoding="utf-8")).get("clips") or {}).items()
+                if isinstance(row, dict)
+            }
+        except (ValueError, OSError):
+            clip_labels = {}
     copied = {}
     for clip_id, filename in CLIPS.items():
         path = os.path.join(library, "animations", filename)
@@ -1013,7 +1029,7 @@ def main():
             copied[clip_id] = 0
             remove_objects(created)
             continue
-        copied[clip_id] = copy_clip(arm, src, clip_id)
+        copied[clip_id] = copy_clip(arm, src, clip_id, clip_labels.get(clip_id))
         remove_objects(created)
     log("library_clips", copied)
     gate = deform_gate(body, arm)

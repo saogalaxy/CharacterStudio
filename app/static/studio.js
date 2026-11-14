@@ -790,7 +790,14 @@ function mountEnvLegend(host) {
   key.className = "env-legend";
   key.appendChild(eyeTools("env", ENVELOPE_BONES));
   fillEnvelopeKey(key, false);
-  host.appendChild(key);
+  const wrap = document.createElement("details");
+  wrap.className = "env-legend-wrap";
+  const summary = document.createElement("summary");
+  summary.textContent = "Envelopes key";
+  summary.title = "Show or hide the envelope color key";
+  wrap.appendChild(summary);
+  wrap.appendChild(key);
+  host.appendChild(wrap);
 }
 function eyeTools(kind, names) {
   const bar = document.createElement("div");
@@ -993,30 +1000,6 @@ function drawAnimations() {
     weightNote.className = "help";
     weightNote.textContent = "Colors the last bind on the moving mesh. Click the body to paint one bone. Red is strong and blue is none. Click empty space to see every bone again. Envelopes hide while this is on.";
     box.appendChild(weightNote);
-    const jiggle = document.createElement("label");
-    jiggle.className = "row";
-    const jiggleTick = document.createElement("input");
-    jiggleTick.type = "checkbox";
-    jiggleTick.dataset.jiggle = "1";
-    jiggleTick.checked = !!job.animations?.jiggle;
-    jiggleTick.onchange = () => {
-      stage.setJiggle({ enabled: jiggleTick.checked, chains: job.markers?.jiggle || [] });
-      postJSON("anim-settings", { jiggle: jiggleTick.checked });
-    };
-    jiggle.append("Jiggle physics", jiggleTick);
-    box.appendChild(jiggle);
-    const jiggleNote = document.createElement("p");
-    jiggleNote.className = "help";
-    jiggleNote.textContent = "Spring motion on the chains marked with J on Rig, while a motion plays. Off, the baked clip plays exactly as before. Not written into the exported file.";
-    box.appendChild(jiggleNote);
-    const chains = job.markers?.jiggle || [];
-    const chainNote = document.createElement("p");
-    chainNote.className = "help";
-    chainNote.dataset.chains = "1";
-    chainNote.textContent = chains.length
-      ? `Chains marked: ${chains.join(", ")}. Breast and butt chains need the tissue bones, which only exist on rigs bound after they were added — older binds can only jiggle body bones.`
-      : "No chains marked, so nothing will jiggle. Open Rig, find the bone, and press J on its row — that bone and every bone below it become the chain.";
-    box.appendChild(chainNote);
     const note = document.createElement("p");
     note.className = "help";
     note.textContent = "Each color is one bone. Point at a name and that area brightens.";
@@ -1050,6 +1033,28 @@ function drawAnimations() {
   }
   box.appendChild(select);
   box.appendChild(fileButton("Import a motion", ".glb,.gltf", "motion"));
+  if (job.files.rig) {
+    const jiggle = document.createElement("label");
+    jiggle.className = "row";
+    const jiggleTick = document.createElement("input");
+    jiggleTick.type = "checkbox";
+    jiggleTick.dataset.jiggle = "1";
+    jiggleTick.checked = !!job.animations?.jiggle;
+    jiggleTick.onchange = () => {
+      stage.setJiggle({ enabled: jiggleTick.checked, chains: job.markers?.jiggle || [] });
+      postJSON("anim-settings", { jiggle: jiggleTick.checked });
+    };
+    jiggle.append("Jiggle physics", jiggleTick);
+    const chains = job.markers?.jiggle || [];
+    const chainNote = document.createElement("p");
+    chainNote.className = "help";
+    chainNote.dataset.chains = "1";
+    chainNote.textContent = chains.length
+      ? `Chains marked: ${chains.join(", ")}.`
+      : "No chains marked.";
+    box.appendChild(jiggle);
+    box.appendChild(chainNote);
+  }
   drawSaved(box);
   const grid = document.createElement("div");
   grid.className = "library";
@@ -1191,7 +1196,16 @@ function drawSaved(box) {
     chip.className = "name" + (id === job.animations?.selected ? " on" : "");
     chip.dataset.id = id;
     chip.textContent = item.label || id;
+    chip.title = "Play. Double-click to rename — names starting with 1 sort first in exports and autoplay elsewhere.";
     chip.onclick = () => chooseClip(id);
+    chip.ondblclick = async (event) => {
+      event.stopPropagation();
+      const next = window.prompt("Rename motion", item.label || id);
+      if (next === null) return;
+      const label = next.trim().slice(0, 48) || item.label || id;
+      if (label === (item.label || id)) return;
+      await postJSON("anim-settings", { clips: { [id]: { label } } });
+    };
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "x";
@@ -1655,6 +1669,7 @@ async function syncStage() {
   }
   if (mode === "hold" || mode === "play") {
     await stage.loadRig(fileUrl("rig/rigged_animated.glb"), mode === "hold");
+    stage.setClipLabels(Object.fromEntries(Object.entries(job.animations?.clips || {}).map(([id, row]) => [id, row.label || id])));
     stage.setJiggle({ enabled: !!job.animations?.jiggle, chains: job.markers?.jiggle || [] });
     if (mode === "play" && job.animations?.selected) {
       await stage.playClip(job.animations.selected, motionUrl(job.animations.selected));

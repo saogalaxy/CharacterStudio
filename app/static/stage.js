@@ -554,6 +554,7 @@ export class Stage {
     this.mixer = null;
     this.actions = {};
     this.current = null;
+    this.clipLabels = {};
     this.paused = false;
     this.timeScale = 1;
     this.hold = false;
@@ -660,6 +661,7 @@ export class Stage {
     this.mixer = null;
     this.actions = {};
     this.current = null;
+    this.clipLabels = {};
     this._bind = {};
     this._posed = {};
     this.mode = "empty";
@@ -721,8 +723,15 @@ export class Stage {
 
   actionName(name) {
     if (this.actions[name]) return name;
-    const want = String(name || "").toLowerCase();
-    return Object.keys(this.actions).find((key) => key.toLowerCase() === want) || "";
+    const label = this.clipLabels && this.clipLabels[name];
+    if (label && this.actions[label]) return label;
+    const want = [String(name || "").toLowerCase()];
+    if (label) want.push(String(label).toLowerCase());
+    return Object.keys(this.actions).find((key) => want.includes(key.toLowerCase())) || "";
+  }
+
+  setClipLabels(map) {
+    this.clipLabels = { ...(map || {}) };
   }
 
   async playClip(name, url) {
