@@ -237,6 +237,25 @@ the pelvis revert, so it is structural to the deep fold, not
 merge-related. Watching: 3 idle interpenetrations
 (spine_02/spine_03) this bind.
 
+Gushing-girl cross-bind, 2026-11-14: same FBX (736k verts, no
+skeleton) bound both sides — ours as job gushing_girl_2ad79e, AF
+in the browser from dots. Both auto-guesses put the groin dot
+off the body (ours 11 cm low, AF flagged his too); both fixed
+by hand before binding. Skeleton proportions differ: pelvis
+height 60.5% of head-ankle here vs 68.5% AF; our spine length
+sits in spine_02/03 (12.3/11.3%) where AF spreads it evenly
+(~8/7/8%); our upper arm reads short (7.1% vs 14.1%). Walk
+swings agree in shape but not size — AF thigh ~60 deg vs our
+~37-47, AF foot 49 vs our 21; arms stiff both sides. Our gate:
+FAIL, walk gaps ~10-12 mm, sit 37.5 mm crease (same structural
+fold as naga). Weights head-to-head blocked: AF's exporter
+writes the file but this browser's download pipe fails past a
+few MB, so their skin table never left the page. AF notes: hair
+renders black over the mouth (alpha cards, needs their Materials
+alpha-clipping — old-mesh texturing, accepted as-is); their rigger
+runs 760k verts in-browser (~15 min) and downscales textures
+2048px.
+
 Export plays bow first, 2026-11-14: Blender exports actions
 alphabetically, so Bow is clip 1 of 22 and 3D Viewer autoplays
 Animation 1. All clips ship (including library/source dupes like
