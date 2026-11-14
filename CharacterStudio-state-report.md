@@ -193,6 +193,11 @@ zone uses the widest of the three envelope scales. Rebind: tears
 34/39/46/53/89 → 25/30/36/42/79, worst gaps flat at 10–17 mm, head
 cape still zero below the skull line, spine_01 owns no verts.
 Pelvis/thigh split kept — legs swing 40°+ every step.
+Pelvis extension tried and reverted, same day: extending the merge
+to the pelvis stretched the sit hip crease to 38 mm with an
+interpenetration (butt needs to seat with the hips, not ride the
+chest). Reverted same session; numbers back to 25/30/36/42/79,
+gaps 10–17 mm, one sit interpenetration under watch.
 
 Head-cape guard, 2026-11-14: the Head-isolate screenshot proved
 head owned head *plus torso*. Measured on the bind: 39,005 back

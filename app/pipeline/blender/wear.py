@@ -511,10 +511,14 @@ def paint(body, arm, height, det, secondary=()):
                     d[i] = 1e6
             nearest = int(np.argmin(d))
             # One mid-torso zone: belly and chest skin ride spine_02 instead of
-            # splitting into spine_01/02/03 bands. The bones still exist and
-            # rotate for clips and jiggle parents; only paint ownership merges.
-            # This runs before the blend set is built, so neighbors blend in.
-            if names[nearest] == "spine_01" or names[nearest] == "spine_03":
+            # splitting into spine_01/02/03 bands. The pelvis keeps its own
+            # zone: the butt must seat with the hips, and following the chest
+            # stretched the sit crease to 38 mm with an interpenetration.
+            # The bones still exist and rotate for clips and jiggle parents;
+            # only paint ownership merges. Thighs keep their split: legs
+            # swing 40 degrees-plus every step. This runs before the blend
+            # set is built, so neighbors blend in.
+            if names[nearest] in ("spine_01", "spine_03"):
                 nearest = index["spine_02"]
             tag = tags.get(names[nearest], "body")
             if tag == "prop":
