@@ -109,8 +109,14 @@ Check L/R symmetry in close-up when both sides matter.
 
 Before writing or modifying any code in Character Studio, you **MUST** follow this protocol:
 
-1. **Perform a Cross-File Audit:** Inspect `index.html`, `app/static/app.js`, `app/static/viewer.js`, `app/app.py`, and `app/pipeline/jobs.py` to identify dependent IDs, API routes, and event bindings.
-2. **Generate a Written Execution Plan:** Explicitly list what files will be changed and how data/DOM contracts will be maintained.
+1. **Perform a Cross-File Audit:** Inspect `index.html`, `app/static/studio.js`,
+   `app/static/stage.js`, `app/app.py`, and `app/pipeline/jobs.py` to identify
+   dependent IDs, API routes, and event bindings.
+2. **Generate a Written Execution Plan:** Post the plan in the reply before the
+   first edit. List the files and the functions/sections, the contracts that
+   cross a file boundary, the exact change, how it will be verified by running,
+   and what is out of scope. If the user suggested the change, restate it
+   first. See `.cursor/rules/explain-before-change.mdc`.
 3. **Verify Contracts:** Confirm that:
    - DOM element IDs and classes match across `index.html` and `app.js`.
    - `window.__viewer` method signatures remain intact.

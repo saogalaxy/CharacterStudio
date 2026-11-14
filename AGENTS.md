@@ -12,6 +12,8 @@ Read these before changing anything, in this order:
 3. `CharacterStudio-state-report.md` — what was actually run and what still
    fails. Update it when the app's state changes; never mark a run done there
    unless it was run.
+4. `.cursor/rules/explain-before-change.mdc` — post the plan block (goal,
+   files, contracts, exact change, proof) before the first edit.
 
 ## Non-negotiable rules
 
@@ -29,9 +31,13 @@ Read these before changing anything, in this order:
   means updating every referencing file in the same edit.
 - **No isolated UI edits.** Any change in `app/static/` must be checked against
   `app/pipeline/jobs.py`, the API routes in `app/app.py`, and the viewer.
-- **Cross-file audit before code (§7):** inspect `index.html`,
-  `app/static/studio.js`, `app/static/stage.js`, `app/app.py`, and
-  `app/pipeline/jobs.py`; state the files and contracts you will touch.
+- **Say what you will change, then change it (§7):** before the first edit,
+  post a plan block — goal, files, contracts, the exact change, how it will be
+  verified by running, and what is out of scope. When the change came from the
+  user, restate their suggestion first. Run the cross-file audit for it:
+  `index.html`, `app/static/studio.js`, `app/static/stage.js`, `app/app.py`,
+  and `app/pipeline/jobs.py`. No edit without the block, one-line fixes
+  included. See `.cursor/rules/explain-before-change.mdc`.
 - Prefer the local **API / CLI / MCP** over driving the window (see
   **Agent drive** below). Do not use computer-use to click Studio unless the
   user asks for a visual check the tools cannot do.

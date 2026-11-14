@@ -1,0 +1,45 @@
+---
+description: Say what you are going to change (and what you understood a suggested change to be) before the first edit
+alwaysApply: true
+---
+
+# Explain the change before you make it
+
+Before the first edit in a task, write a short plan in the reply. Do not
+open an editor until it is written. This is section 7 of
+`character_studio_agent_guidelines.md` made visible to the user.
+
+## The plan block
+
+1. **Goal** - one sentence, in the user's words where possible.
+2. **Files** - every file to be touched, with the function or section.
+3. **Contracts** - the element ids, CSS classes, API JSON keys, `job.json`
+   fields, or `window.__viewer` methods that cross a file boundary.
+4. **Change** - what each file gets, concrete enough that the user can stop
+   it before the work starts.
+5. **Proof** - how it will be checked by running the app or the API (job
+   rerun, CLI/MCP call, served asset, or a clip the user sends).
+6. **Not touching** - what is deliberately out of scope.
+
+Six lines is enough. This is a gate, not a design document.
+
+## When the user suggested the change
+
+Restate the suggestion as you understood it first, then list the exact edits
+that follow from it. If the restatement is not what they meant, they can
+correct it before code exists. If the suggestion is ambiguous, ask one
+question instead of guessing.
+
+## Rules
+
+- No plan block, no edit - including one-line fixes, doc edits, and
+  "obvious" follow-ups.
+- If the plan changes mid-task, post the revised block before that edit.
+- Anything user-visible gets a proof line. A change that cannot be verified
+  by running is not finished; say so in the plan rather than after.
+- No silent refactors: renaming an id, class, or JSON key means listing
+  every referencing file in the same block.
+- A new control or switch names its backend wiring and where it persists in
+  the same block. Unwired UI is a bug, not a change.
+- Destructive work (deleting a job, rebinding, rewriting a file the user may
+  have edited) is stated as destructive and waits for a yes.
