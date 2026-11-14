@@ -188,8 +188,8 @@ One mid-torso zone, 2026-11-14: the ownership view showed
 spine_01/02/03 banding across the belly, each band edge a tear
 risk. Paint now remaps spine_01/spine_03 picks to spine_02 before
 the blend set is built (bones still exist for clips and jiggle;
-only ownership merges, neighbors still blend in), and the merged
-zone uses the widest of the three envelope scales. Rebind: tears
+only ownership merges, neighbors blend in), and the merged zone
+uses the widest of the three envelope scales. Rebind: tears
 34/39/46/53/89 → 25/30/36/42/79, worst gaps flat at 10–17 mm, head
 cape still zero below the skull line, spine_01 owns no verts.
 Pelvis/thigh split kept — legs swing 40°+ every step.
@@ -198,6 +198,15 @@ to the pelvis stretched the sit hip crease to 38 mm with an
 interpenetration (butt needs to seat with the hips, not ride the
 chest). Reverted same session; numbers back to 25/30/36/42/79,
 gaps 10–17 mm, one sit interpenetration under watch.
+Wider torso/shoulder defaults, 2026-11-14: `spine_01/02/03` → 1.2,
+clavicles 0.8 → 1.0 (user's explicit values still win; `neck_01`
+collar stays 0.55). No voxelizer exists — sigma IS the radius.
+Rebind (confounded: same bind carries the user's new pelvis 0.55,
+spine_01/02 envelopes and moved spine joints): 31/35/42/49/84,
+gaps 10–20 mm, 2 walk interpenetrations. No clear win over the
+prior bind; smoothing has hit diminishing returns — what is left
+clusters at the shoulder ball joint and the sit hip crease, which
+are placement problems, not paint-math problems.
 
 Head-cape guard, 2026-11-14: the Head-isolate screenshot proved
 head owned head *plus torso*. Measured on the bind: 39,005 back
