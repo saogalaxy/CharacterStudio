@@ -188,6 +188,11 @@ of Walk): breasts 7.92°, glutes 3.06°, parents 0.04° — identical to
 the isolated test. The code path delivers; the remaining causes are
 session state (watching Rig instead of playing Animations, paused,
 or switch off), not the spring.
+Video verdict, 2026-11-14: the 15 s clip shows the switch OFF in
+every frame (plain baked clip — stiff is correct); the 23.5 s clip
+shows it ON with all four chains, Walk playing. So the spring runs
+in the second clip at the measured ~8° — visible on a close-up,
+not a cartoon bounce.
 
 Also fixed while measuring: the spring compounded on bones the
 clip does not animate (the mixer never fully overwrites them), so
