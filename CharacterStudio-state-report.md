@@ -180,6 +180,15 @@ showed a literal `<name>_glb.glb / …` placeholder plus an ellipsis
 char next to the Export button. Deleted the line; the format
 checkboxes and the Export/Show-in-folder buttons already say it.
 
+Stiffness report, 2026-11-14: with the switch on, chains marked and
+a fresh bind, tissue is stiff in the user's session. Reproduced the
+entire `_frame` order in Node against the real naga GLB (restore →
+mixer → snapshot → fit with the saved Walk fit → jiggle step, 4 s
+of Walk): breasts 7.92°, glutes 3.06°, parents 0.04° — identical to
+the isolated test. The code path delivers; the remaining causes are
+session state (watching Rig instead of playing Animations, paused,
+or switch off), not the spring.
+
 Also fixed while measuring: the spring compounded on bones the
 clip does not animate (the mixer never fully overwrites them), so
 a marked `spine_03` spun the left index finger 180°. `_jiggleStep`
