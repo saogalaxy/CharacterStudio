@@ -136,3 +136,20 @@ button.chain.on { border-color: #7ad0a0; background: #7ad0a0; color: #0a0c10; }
 .env-key.hot .name { color: white; }
 .env-legend { margin: 4px 0 12px; }
 .status { color: var(--muted); min-height: 1.2em; }
+/* Inline help marker: "?" that pops an overlay on hover/focus. */
+.tip {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; border: 1px solid var(--line); border-radius: 50%;
+  color: var(--muted); font-size: 11px; line-height: 1; cursor: help;
+  position: relative; flex: none; font-style: normal;
+}
+.tip:hover::after, .tip:focus::after {
+  content: attr(data-tip);
+  position: absolute; z-index: 50; bottom: 130%; left: 50%;
+  transform: translateX(-50%); width: max-content; max-width: 250px;
+  white-space: normal; text-align: left;
+  background: #11141a; border: 1px solid var(--line); border-radius: 8px;
+  padding: 8px 10px; color: var(--text); font-size: 12px; font-weight: 400;
+}
+.env-pill { margin: 4px 0; }
+.env-pill-body[hidden] { display: none; }

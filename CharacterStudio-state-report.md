@@ -204,6 +204,17 @@ longer delete animations.json — the jiggle switch, selection, and
 fits survive marker/envelope edits now (that wipe is what kept
 turning the switch off).
 
+Animations declutter, 2026-11-14: all static help paragraphs on
+the panel became hover ? markers on their own rows; the envelopes
+key (both panels) collapsed behind a pill button, shut by default;
+jiggle moved above Saved with its explainer deleted and the chain
+list trimmed to status text. Status warnings stay visible.
+Rename-to-play-first, same batch: double-click a saved motion to
+rename; the bind names baked actions from the label so a leading
+1 sorts first and autoplays externally, while in-app lookup still
+resolves the stable id. Verified API-side and with an isolated
+Blender naming test. Bump to bg16.
+
 Rename to play first, 2026-11-14: saved chips rename on double-click (prompt, persisted through anim-settings labels). The bind names baked actions from the label, so 1 Walk sorts first and autoplays in external viewers; in-app lookup tries id then label. Verified: API rename round-trip with no bind invalidation, isolated Blender copy_clip naming incl. blank-label fallback. Takes effect on the next bind.
 
 Export plays bow first, 2026-11-14: Blender exports actions

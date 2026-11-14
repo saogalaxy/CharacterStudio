@@ -1,4 +1,4 @@
-import { Stage, ENVELOPE_BONES, boneLabel, bonePlace, dotColorCss, envelopeColorCss, poseLabel, visibleDots } from "./stage.js?v=bg15";
+import { Stage, ENVELOPE_BONES, boneLabel, bonePlace, dotColorCss, envelopeColorCss, poseLabel, visibleDots } from "./stage.js?v=bg16";
 import { mountPlacementMinimap } from "./placement-minimap.js?v=af75";
 
 const STEPS = [
@@ -32,6 +32,8 @@ let posting = false;
 let showBones = true;
 let showAnimBones = false;
 let showAnimEnv = false;
+let showAnimEnvKey = false;
+let showRigEnvKey = false;
 let showAnimHeat = false;
 let showHeat = false;
 let showEstimate = false;
@@ -331,6 +333,15 @@ function button(label, onclick, primary, disabled) {
   if (primary) el.className = "primary";
   el.disabled = !!disabled;
   el.onclick = onclick;
+  return el;
+}
+
+function tip(text) {
+  const el = document.createElement("span");
+  el.className = "tip";
+  el.textContent = "?";
+  el.dataset.tip = text;
+  el.tabIndex = 0;
   return el;
 }
 
@@ -657,14 +668,26 @@ function drawRig() {
     showEnv = envTick.checked;
     paintMarkers();
   };
-  env.append("Show envelopes", envTick);
+  env.append("Show envelopes", tip("Each color volume follows one bone. Point at a name and that area brightens. Click a marker or volume to solo it; click empty space to show all again."), envTick);
   box.appendChild(env);
-  const envNote = document.createElement("p");
-  envNote.className = "help";
-  envNote.textContent = "Each color is one bone. Point at a name and that area brightens. Click a marker or volume to solo it; click empty space to show all again.";
-  box.appendChild(envNote);
-  box.appendChild(eyeTools("env", ENVELOPE_BONES));
-  fillEnvelopeKey(box, true);
+  const envPill = document.createElement("button");
+  envPill.type = "button";
+  envPill.className = "env-pill";
+  const envCount = ENVELOPE_BONES.length;
+  envPill.textContent = (showRigEnvKey ? "▾ " : "▸ ") + `Envelopes (${envCount})`;
+  envPill.title = "Show or hide the envelope size list";
+  const envBody = document.createElement("div");
+  envBody.className = "env-legend-body";
+  envBody.hidden = !showRigEnvKey;
+  envBody.appendChild(eyeTools("env", ENVELOPE_BONES));
+  fillEnvelopeKey(envBody, true);
+  envPill.onclick = () => {
+    showRigEnvKey = !showRigEnvKey;
+    envPill.textContent = (showRigEnvKey ? "▾ " : "▸ ") + `Envelopes (${envCount})`;
+    envBody.hidden = !showRigEnvKey;
+  };
+  box.appendChild(envPill);
+  box.appendChild(envBody);
   const envReset = document.createElement("button");
   envReset.type = "button";
   envReset.textContent = "Reset envelopes";
@@ -780,23 +803,33 @@ function bindWeightFocus(row, name, kind) {
   };
 }
 
-function mountEnvLegend(host) {
-  host.querySelector(".env-legend")?.remove();
+function mountEnvLegend(host, legendTip) {
+  host.querySelector(".env-legend-wrap")?.remove();
   if (!showAnimEnv) {
     stage.highlightEnvelope("");
     return;
   }
+  const wrap = document.createElement("div");
+  wrap.className = "env-legend-wrap";
+  const pill = document.createElement("button");
+  pill.type = "button";
+  pill.className = "env-pill";
+  pill.textContent = (showAnimEnvKey ? "▾ " : "▸ ") + "Envelopes key";
+  if (legendTip) pill.title = legendTip;
+  const body = document.createElement("div");
+  body.className = "env-legend-body";
+  body.hidden = !showAnimEnvKey;
   const key = document.createElement("div");
   key.className = "env-legend";
   key.appendChild(eyeTools("env", ENVELOPE_BONES));
   fillEnvelopeKey(key, false);
-  const wrap = document.createElement("details");
-  wrap.className = "env-legend-wrap";
-  const summary = document.createElement("summary");
-  summary.textContent = "Envelopes key";
-  summary.title = "Show or hide the envelope color key";
-  wrap.appendChild(summary);
-  wrap.appendChild(key);
+  body.appendChild(key);
+  pill.onclick = () => {
+    showAnimEnvKey = !showAnimEnvKey;
+    pill.textContent = (showAnimEnvKey ? "▾ " : "▸ ") + "Envelopes key";
+    body.hidden = !showAnimEnvKey;
+  };
+  wrap.append(pill, body);
   host.appendChild(wrap);
 }
 function eyeTools(kind, names) {
@@ -938,12 +971,8 @@ function drawAnimations() {
       lockMotionCamera = camTick.checked;
       stage.setFollowCharacter(lockMotionCamera);
     };
-    cam.append("Lock camera", camTick);
+    cam.append("Lock camera", tip("When on, the view stays on the character while a motion plays. Turn off to leave the camera still so they walk through the scene. The padlock above only freezes orbit."), camTick);
     box.appendChild(cam);
-    const camNote = document.createElement("p");
-    camNote.className = "help";
-    camNote.textContent = "When on, the view stays on the character while a motion plays. Turn off to leave the camera still so they walk through the scene. The padlock above only freezes orbit.";
-    box.appendChild(camNote);
     stage.setFollowCharacter(lockMotionCamera);
     const bones = document.createElement("label");
     bones.className = "row";
@@ -969,12 +998,8 @@ function drawAnimations() {
       boneStyle = styleTick.checked ? "blender" : "stick";
       stage.setBoneStyle(boneStyle);
     };
-    style.append("Blender bones", styleTick);
+    style.append("Blender bones", tip("Octahedral bones like Blender. Turn on Show skeleton first. Stick figure stays the default."), styleTick);
     box.appendChild(style);
-    const styleNote = document.createElement("p");
-    styleNote.className = "help";
-    styleNote.textContent = "Octahedral bones like Blender. Turn on Show skeleton first. Stick figure stays the default.";
-    box.appendChild(styleNote);
     const env = document.createElement("label");
     env.className = "row";
     const envTick = document.createElement("input");
@@ -994,17 +1019,9 @@ function drawAnimations() {
     weightTick.dataset.animWeight = "1";
     weightTick.checked = showAnimHeat;
     weightTick.onchange = () => setAnimWeights(weightTick.checked);
-    weights.append("Show weights", weightTick);
+    weights.append("Show weights", tip("Colors the last bind on the moving mesh. Click the body to paint one bone. Red is strong and blue is none. Click empty space to see every bone again. Envelopes hide while this is on."), weightTick);
     box.appendChild(weights);
-    const weightNote = document.createElement("p");
-    weightNote.className = "help";
-    weightNote.textContent = "Colors the last bind on the moving mesh. Click the body to paint one bone. Red is strong and blue is none. Click empty space to see every bone again. Envelopes hide while this is on.";
-    box.appendChild(weightNote);
-    const note = document.createElement("p");
-    note.className = "help";
-    note.textContent = "Each color is one bone. Point at a name and that area brightens.";
-    box.appendChild(note);
-    mountEnvLegend(box);
+    mountEnvLegend(box, "Each color is one bone. Point at a name and that area brightens.");
   }
   if (!job.files.rig) {
     const need = document.createElement("p");
@@ -1044,16 +1061,11 @@ function drawAnimations() {
       stage.setJiggle({ enabled: jiggleTick.checked, chains: job.markers?.jiggle || [] });
       postJSON("anim-settings", { jiggle: jiggleTick.checked });
     };
-    jiggle.append("Jiggle physics", jiggleTick);
     const chains = job.markers?.jiggle || [];
-    const chainNote = document.createElement("p");
-    chainNote.className = "help";
-    chainNote.dataset.chains = "1";
-    chainNote.textContent = chains.length
+    jiggle.append("Jiggle physics", tip(chains.length
       ? `Chains marked: ${chains.join(", ")}.`
-      : "No chains marked.";
+      : "No chains marked. Mark chains with J on the Rig bone list."), jiggleTick);
     box.appendChild(jiggle);
-    box.appendChild(chainNote);
   }
   drawSaved(box);
   const grid = document.createElement("div");
@@ -1225,12 +1237,9 @@ function selectedExportFormats() {
 function drawExport(box) {
   const heading = document.createElement("h3");
   heading.className = "sub";
-  heading.textContent = "Export";
+  heading.textContent = "Export ";
+  heading.appendChild(tip("One file per format with the character and every saved motion."));
   box.appendChild(heading);
-  const note = document.createElement("p");
-  note.className = "help";
-  note.textContent = "One file per format with the character and every saved motion.";
-  box.appendChild(note);
   for (const [fmt, label] of [["glb", ".glb"], ["gltf", ".gltf"], ["fbx", ".fbx"]]) {
     const row = document.createElement("label");
     row.className = "row";
