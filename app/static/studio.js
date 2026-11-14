@@ -1,4 +1,4 @@
-import { Stage, ENVELOPE_BONES, boneLabel, bonePlace, dotColorCss, envelopeColorCss, poseLabel, visibleDots } from "./stage.js?v=bg11";
+import { Stage, ENVELOPE_BONES, boneLabel, bonePlace, dotColorCss, envelopeColorCss, poseLabel, visibleDots } from "./stage.js?v=bg12";
 import { mountPlacementMinimap } from "./placement-minimap.js?v=af75";
 
 const STEPS = [
@@ -34,6 +34,8 @@ let showAnimBones = false;
 let showAnimEnv = false;
 let showAnimHeat = false;
 let showHeat = false;
+let showEstimate = false;
+let showArrows = false;
 let boneStyle = "stick";
 let mirrorMarkers = true;
 let lockMotionCamera = true;
@@ -296,7 +298,7 @@ function render() {
     };
     bar.appendChild(button);
   });
-  const key = [view, showBones, job.running, job.steps[view]?.message, job.skeleton_seen, job.rig_stale, (job.off_body || []).join(), showEnv, (job.markers?.jiggle || []).join(), (job.extra_bones || []).join(), job.animations?.jiggle].join("|");
+  const key = [view, showBones, job.running, job.steps[view]?.message, job.skeleton_seen, job.rig_stale, (job.off_body || []).join(), showEnv, (job.markers?.jiggle || []).join(), (job.extra_bones || []).join(), job.animations?.jiggle, showEstimate, showArrows].join("|");
   if (key !== panelKey) {
     panelKey = key;
     drawPanel();
@@ -514,10 +516,46 @@ function drawRig() {
   heatTick.disabled = !job.files.rig;
   heatTick.onchange = () => {
     showHeat = heatTick.checked;
+    if (showHeat && showEstimate) { showEstimate = false; stage.setEstimate(false); }
+    panelKey = "";
     paintMarkers();
+    drawPanel();
   };
   heat.append("Weight paint", heatTick);
   box.appendChild(heat);
+  const est = document.createElement("label");
+  est.className = "row";
+  const estTick = document.createElement("input");
+  estTick.type = "checkbox";
+  estTick.checked = showEstimate;
+  estTick.onchange = () => {
+    showEstimate = estTick.checked;
+    if (showEstimate && showHeat) showHeat = false;
+    stage.setEstimate(showEstimate);
+    panelKey = "";
+    paintMarkers();
+    drawPanel();
+  };
+  est.append("Estimate paint", estTick);
+  box.appendChild(est);
+  const arrows = document.createElement("label");
+  arrows.className = "row";
+  const arrowsTick = document.createElement("input");
+  arrowsTick.type = "checkbox";
+  arrowsTick.checked = showArrows;
+  arrowsTick.onchange = () => {
+    showArrows = arrowsTick.checked;
+    stage.setArrows(showArrows);
+    panelKey = "";
+    paintMarkers();
+    drawPanel();
+  };
+  arrows.append("Direction arrows", arrowsTick);
+  box.appendChild(arrows);
+  const arrowsNote = document.createElement("p");
+  arrowsNote.className = "help";
+  arrowsNote.textContent = "Estimate paint is a rough nearest-bone preview from the current dots — not the bind. Move a dot, drop it, and the colors refresh. Arrows show each bone's aim. Click a bone name to solo its region.";
+  box.appendChild(arrowsNote);
   const heatNote = document.createElement("p");
   heatNote.className = "help";
   if (!job.files.rig) {
@@ -1627,10 +1665,14 @@ function paintMarkers() {
     stage.setBones(det.joints, det.height, det.fingers || "five", det.finger_tips || null);
     stage.setExtraBones(job.extra_bone_frames || {});
     stage.setBoneOverlayVisible(showBones);
+    stage.setArrows(showArrows);
     stage.showEnvelopes(showEnv, det.envelopes || {});
+    stage.refreshEstimate();
   } else if (view === "markers" && det?.joints) {
     stage.clearSolo();
     stage.setDots(det.joints, det.height, det.joints_off_body || [], det.off_body || [], []);
+    stage.setArrows(showArrows);
+    stage.refreshEstimate();
   } else {
     stage.clearSolo();
     stage.clearOverlay();

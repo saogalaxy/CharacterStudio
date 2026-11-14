@@ -198,6 +198,17 @@ invalidate the bind and drop `animations.json`, so the jiggle
 switch is OFF again and the Walk fit is back to default — re-tick
 and re-fit before judging jiggle.
 
+Estimate paint + direction arrows, 2026-11-14: Rig gets an
+"Estimate paint" tick (rough nearest-segment preview from the live
+dots, off/whole-mesh/soloed-bone, recomputed on drop — no bind
+needed) and a "Direction arrows" tick (per-bone aim arrows that
+follow drags). Both viewer-local, nothing persisted. Verified in
+Node on the real naga mesh+markers: 1.43M verts colored, head owns
+the cape band in the estimate, solo-head dims the rest, second
+refresh is a no-op, 26 arrows (2 when head is soloed). No direct
+weight painting exists — weights are computed; dots, envelopes,
+tags, and now the estimate are the controls. Bump to `?v=bg12`.
+
 Export helper text removed, 2026-11-14: the Animations panel
 showed a literal `<name>_glb.glb / …` placeholder plus an ellipsis
 char next to the Export button. Deleted the line; the format

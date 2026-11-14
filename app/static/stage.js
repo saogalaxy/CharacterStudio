@@ -573,6 +573,14 @@ export class Stage {
     this.dots = {};
     this.extraFrames = {};
     this.extraDots = {};
+    this.wantEstimate = false;
+    this._estOwners = null;
+    this._estSegs = [];
+    this._estStamp = "";
+    this._estMesh = null;
+    this._estToken = 0;
+    this.wantArrows = false;
+    this.arrowGroup = null;
     this.bones = null;
     this.boneStyle = "stick";
     this.boneOverlay = true;
@@ -663,7 +671,12 @@ export class Stage {
   clearOverlay() {
     this._clearDots();
     this._dropBones();
+    this._dropArrows();
     this.extraFrames = {};
+    this._estOwners = null;
+    this._estSegs = [];
+    this._estStamp = "";
+    this._estMesh = null;
     this.envelopes.clear();
     this.fingerTips = null;
     this.picked = null;
@@ -1373,6 +1386,166 @@ export class Stage {
     }
   }
 
+  setEstimate(on) {
+    this.wantEstimate = !!on;
+    if (!this.wantEstimate) {
+      this._estToken++;
+      this._clearEstimate();
+      return;
+    }
+    this.refreshEstimate();
+  }
+
+  _estimateMesh() {
+    if (!this.root) return null;
+    let found = null;
+    this.root.traverse((obj) => { if (!found && obj.isMesh) found = obj; });
+    return found;
+  }
+
+  refreshEstimate() {
+    if (!this.wantEstimate || this.mode !== "mesh" || !this.root || this.drag || this.rotating) return;
+    const joints = this.joints || {};
+    const stamp = JSON.stringify(joints);
+    const mesh = this._estimateMesh();
+    if (!mesh || !mesh.geometry?.attributes?.position) return;
+    if (this._estOwners && stamp === this._estStamp && this._estMesh === mesh) {
+      this._paintEstimate();
+      return;
+    }
+    const segs = [];
+    for (const [a, b] of LINKS) {
+      if (!joints[a] || !joints[b]) continue;
+      segs.push({ a: toThree(joints[a]), b: toThree(joints[b]), owner: b });
+    }
+    if (!segs.length) { this._clearEstimate(); return; }
+    const token = ++this._estToken;
+    this._estMesh = mesh;
+    this._estStamp = stamp;
+    this._estSegs = segs;
+    const pos = mesh.geometry.attributes.position.array;
+    const count = mesh.geometry.attributes.position.count;
+    const owners = new Uint8Array(count);
+    const step = (start) => {
+      if (token !== this._estToken) return;
+      const end = Math.min(count, start + 150000);
+      for (let i = start; i < end; i++) {
+        const px = pos[i * 3], py = pos[i * 3 + 1], pz = pos[i * 3 + 2];
+        let best = 0, bestD = Infinity;
+        for (let s = 0; s < segs.length; s++) {
+          const sg = segs[s];
+          const abx = sg.b.x - sg.a.x, aby = sg.b.y - sg.a.y, abz = sg.b.z - sg.a.z;
+          const denom = abx * abx + aby * aby + abz * abz + 1e-12;
+          let t = ((px - sg.a.x) * abx + (py - sg.a.y) * aby + (pz - sg.a.z) * abz) / denom;
+          t = t < 0 ? 0 : t > 1 ? 1 : t;
+          const dx = px - (sg.a.x + abx * t), dy = py - (sg.a.y + aby * t), dz = pz - (sg.a.z + abz * t);
+          const dd = dx * dx + dy * dy + dz * dz;
+          if (dd < bestD) { bestD = dd; best = s; }
+        }
+        owners[i] = best;
+      }
+      if (end < count) { setTimeout(() => step(end), 0); return; }
+      if (token !== this._estToken) return;
+      this._estOwners = owners;
+      this._paintEstimate();
+    };
+    step(0);
+  }
+
+  _clearEstimate() {
+    this._estOwners = null;
+    this._estSegs = [];
+    this._estStamp = "";
+    this._estMesh = null;
+    const mesh = this._estimateMesh();
+    if (mesh && mesh.material) {
+      mesh.material.vertexColors = false;
+      mesh.material.needsUpdate = true;
+      if (mesh.geometry.getAttribute("color")) mesh.geometry.deleteAttribute("color");
+    }
+  }
+
+  _paintEstimate() {
+    if (!this.wantEstimate || !this._estOwners || this.mode !== "mesh") return;
+    const mesh = this._estMesh || this._estimateMesh();
+    if (!mesh || !mesh.geometry?.attributes?.position) return;
+    const count = mesh.geometry.attributes.position.count;
+    if (this._estOwners.length !== count) return;
+    let attr = mesh.geometry.getAttribute("color");
+    if (!attr) {
+      attr = new THREE.BufferAttribute(new Float32Array(count * 3), 3);
+      mesh.geometry.setAttribute("color", attr);
+    }
+    const solo = this._soloSet();
+    const col = new THREE.Color();
+    for (let i = 0; i < count; i++) {
+      const owner = this._estSegs[this._estOwners[i]].owner;
+      if (!solo || solo.has(owner)) {
+        col.set(dotColor(owner));
+        attr.setXYZ(i, col.r, col.g, col.b);
+      } else {
+        attr.setXYZ(i, 0.16, 0.16, 0.16);
+      }
+    }
+    attr.needsUpdate = true;
+    if (mesh.material && !mesh.material.vertexColors) {
+      mesh.material.vertexColors = true;
+      mesh.material.needsUpdate = true;
+    }
+  }
+
+  setArrows(on) {
+    this.wantArrows = !!on;
+    this._drawArrows();
+  }
+
+  _dropArrows() {
+    if (!this.arrowGroup) return;
+    this.arrowGroup.traverse((obj) => {
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) obj.material.dispose();
+    });
+    this.scene.remove(this.arrowGroup);
+    this.arrowGroup = null;
+  }
+
+  _drawArrows() {
+    this._dropArrows();
+    if (!this.wantArrows || this.mode !== "mesh" || !this.joints) return;
+    const solo = this._soloSet();
+    const vis = (a, b) => (!solo || solo.has(a) || solo.has(b)) && !this.hiddenBones.has(a) && !this.hiddenBones.has(b);
+    const group = new THREE.Group();
+    const add = (from, to, name) => {
+      const dir = to.clone().sub(from);
+      const len = dir.length();
+      if (len < 1e-4) return;
+      dir.divideScalar(len);
+      const show = Math.min(len * 0.55, Math.max(this.H, 0.2) * 0.06);
+      const arrow = new THREE.ArrowHelper(dir, from, show, dotColor(name), show * 0.35, show * 0.2);
+      arrow.line.material.transparent = true;
+      arrow.line.material.opacity = 0.9;
+      arrow.line.material.depthTest = false;
+      arrow.cone.material.transparent = true;
+      arrow.cone.material.opacity = 0.9;
+      arrow.cone.material.depthTest = false;
+      arrow.renderOrder = 7;
+      group.add(arrow);
+    };
+    for (const [a, b] of LINKS) {
+      if (!this.joints[a] || !this.joints[b] || !vis(a, b)) continue;
+      add(toThree(this.joints[a]), toThree(this.joints[b]), b);
+    }
+    for (const [name, frame] of Object.entries(this.extraFrames || {})) {
+      if (!frame || !frame.head || !frame.tail) continue;
+      const parent = frame.parent;
+      if (!parent || !this.joints[parent] || !vis(parent, name)) continue;
+      add(toThree(frame.head), toThree(frame.tail), name);
+    }
+    if (!group.children.length) return;
+    this.scene.add(group);
+    this.arrowGroup = group;
+  }
+
   setBoneHidden(name, hidden) {
     this.setBonesHidden([name], hidden);
   }
@@ -1437,6 +1610,8 @@ export class Stage {
       mesh.visible = this._boneVisible(name);
     }
     if (this.bones) this.bones.visible = this.boneOverlay;
+    this._drawArrows();
+    this._paintEstimate();
   }
 
   setEnvelopeHidden(name, hidden) {
