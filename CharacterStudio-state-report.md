@@ -175,6 +175,16 @@ offset); cleared → rebound to pristine auto placement. The desktop
 app on :8765 was untouched. Bump to `?v=bg08`; relaunch required
 (new state key + new JS).
 
+Tissue envelopes listed, 2026-11-14: Show envelopes had no rows for
+the physics bones. They are in the list now (Rig + Animations)
+with hide toggles and working size sliders; the slider value
+reaches the bind via `markers.json envelopes` and scales the
+tissue falloff in `paint` (default 1 = today's behavior, takes
+effect on the next bind). Verified in Node on the fresh naga bind:
+Rig 24 holds with all four tissue capsules, slider 1.0→1.5 widens
+the tube exactly 1.5×, hide works; Animations 21 holds with
+parent→pivot capsules. Bump to `?v=bg11`.
+
 Export helper text removed, 2026-11-14: the Animations panel
 showed a literal `<name>_glb.glb / …` placeholder plus an ellipsis
 char next to the Export button. Deleted the line; the format

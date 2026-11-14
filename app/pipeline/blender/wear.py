@@ -421,8 +421,9 @@ def paint(body, arm, height, det, secondary=()):
     collar_r = 0.035 * height
     coords = np.array([(body.matrix_world @ v.co)[:] for v in body.data.vertices], dtype=np.float64)
     # Tissue bones never win the nearest-bone search; the falloff below feeds
-    # them instead, so the region stays predictable.
-    tissue = [(index[r["name"]], r["center"], float(r["sigma"]), float(r.get("hand", 1.0)), r["name"])
+    # them instead, so the region stays predictable. The envelope scale acts
+    # here exactly like everywhere else: smaller sharpens their share.
+    tissue = [(index[r["name"]], r["center"], float(r["sigma"]) * float(applied.get(r["name"], 1.0)), float(r.get("hand", 1.0)), r["name"])
               for r in secondary if r["name"] in index]
     groups = {}
     for n in names:

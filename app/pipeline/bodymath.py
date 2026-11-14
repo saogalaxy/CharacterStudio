@@ -12,6 +12,7 @@ ENVELOPE_OVERRIDE_BONES = (
     "lowerarm_l", "lowerarm_r", "hand_l", "hand_r",
     "calf_l", "calf_r", "foot_l", "foot_r",
 )
+TISSUE_BONES = ("breast_l", "breast_r", "glute_l", "glute_r")
 # AF-like paint: smaller scale ⇒ tighter sigma ⇒ stronger nearest ownership.
 # Neck ownership is also collar-clamped in wear.paint (scale alone is not enough).
 DEFAULT_ENVELOPE_SCALES = {

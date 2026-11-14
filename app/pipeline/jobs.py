@@ -700,7 +700,7 @@ class Studio:
         if envelopes is not None:
             stored = dict(det.get("envelopes") or {})
             for key, value in envelopes.items():
-                allowed = bodymath.ENVELOPE_BONES + bodymath.ENVELOPE_OVERRIDE_BONES
+                allowed = bodymath.ENVELOPE_BONES + bodymath.ENVELOPE_OVERRIDE_BONES + bodymath.TISSUE_BONES
                 if key not in allowed:
                     continue
                 scale = float(value)

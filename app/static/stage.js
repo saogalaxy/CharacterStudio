@@ -117,12 +117,25 @@ export const ENVELOPE_BONES = [
   "spine_02", "spine_01", "pelvis",
   "thigh_l", "calf_l", "foot_l",
   "thigh_r", "calf_r", "foot_r",
+  "breast_l", "breast_r", "glute_l", "glute_r",
 ];
+// Tissue bones have no markers.json joints: their envelope runs from the
+// parent joint to the bind pivot (see extra_bone_frames).
+const ENVELOPE_TISSUE_PARENT = {
+  breast_l: "spine_03",
+  breast_r: "spine_03",
+  glute_l: "pelvis",
+  glute_r: "pelvis",
+};
 const ENVELOPE_COLOR = {
   pelvis: 0xf5c542,
   spine_01: 0x8fd14f,
   spine_02: 0x3dcc9a,
   spine_03: 0x3d8bfd,
+  breast_l: 0xf472b6,
+  breast_r: 0xfb7185,
+  glute_l: 0xc084fc,
+  glute_r: 0xa78bfa,
   neck_01: 0xb07cff,
   head: 0xf0a0ff,
   clavicle_l: 0x5ec8ff,
@@ -1851,6 +1864,17 @@ export class Stage {
       hold.visible = this._envVisible(name);
       this.envelopes.add(hold);
     }
+    for (const name of Object.keys(ENVELOPE_TISSUE_PARENT)) {
+      const frame = (this.extraFrames || {})[name];
+      const start = frame && this.joints[frame.parent || ENVELOPE_TISSUE_PARENT[name]];
+      if (!frame || !start || !frame.head) continue;
+      const hold = makeCapsule(tubeGeo, capGeo, ENVELOPE_COLOR[name] || 0xd4c8d8);
+      hold.userData.name = name;
+      hold.userData.hidden = this.hiddenEnvs.has(name);
+      if (!placeCapsule(hold, toThree(start), toThree(frame.head), envelopeRadius(this.H, (scales && scales[name]) || 1))) continue;
+      hold.visible = this._envVisible(name);
+      this.envelopes.add(hold);
+    }
     this._paintEnvelopeFocus(this.envelopes);
     this._applyEnvVisibility();
   }
@@ -1915,8 +1939,12 @@ export class Stage {
     const geo = new THREE.CylinderGeometry(1, 1, 1, 16, 1);
     const cap = new THREE.SphereGeometry(1, 16, 12);
     for (const name of ENVELOPE_BONES) {
-      const bone = bones[name] || bones[ENVELOPE_JOINT[name]];
-      const tail = bone && bones[ENVELOPE_TAIL[name]];
+      let bone = bones[name] || bones[ENVELOPE_JOINT[name]];
+      let tail = bone && bones[ENVELOPE_TAIL[name]];
+      if (!tail && bone && ENVELOPE_TISSUE_PARENT[name] && bones[ENVELOPE_TISSUE_PARENT[name]]) {
+        tail = bone;
+        bone = bones[ENVELOPE_TISSUE_PARENT[name]];
+      }
       if (!bone || !tail) continue;
       const hold = makeCapsule(geo, cap, ENVELOPE_COLOR[name] || 0xd4c8d8);
       hold.userData.bone = bone;
