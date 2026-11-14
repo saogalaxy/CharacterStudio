@@ -1,4 +1,4 @@
-import { Stage, ENVELOPE_BONES, boneLabel, bonePlace, dotColorCss, envelopeColorCss, poseLabel, visibleDots } from "./stage.js?v=bg04";
+import { Stage, ENVELOPE_BONES, boneLabel, bonePlace, dotColorCss, envelopeColorCss, poseLabel, visibleDots } from "./stage.js?v=bg05";
 import { mountPlacementMinimap } from "./placement-minimap.js?v=af75";
 
 const STEPS = [
@@ -965,7 +965,7 @@ function drawAnimations() {
     chainNote.className = "help";
     chainNote.dataset.chains = "1";
     chainNote.textContent = chains.length
-      ? `Chains marked: ${chains.join(", ")}. The rig has no extra hair or cloth bones, so a chain moves bones the body already has.`
+      ? `Chains marked: ${chains.join(", ")}. Breast and butt chains need the tissue bones, which only exist on rigs bound after they were added — older binds can only jiggle body bones.`
       : "No chains marked, so nothing will jiggle. Open Rig, find the bone, and press J on its row — that bone and every bone below it become the chain.";
     box.appendChild(chainNote);
     const note = document.createElement("p");
