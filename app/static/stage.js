@@ -758,6 +758,11 @@ export class Stage {
           angle: new THREE.Vector3(),
           vel: new THREE.Vector3(),
           prevParent: new THREE.Quaternion(),
+          prevPos: new THREE.Vector3(),
+          prevPvel: new THREE.Vector3(),
+          pvel: new THREE.Vector3(),
+          pacc: new THREE.Vector3(),
+          len: 0.04,
           ready: false,
         });
         for (const child of bone.children) if (child.isBone) queue.push(child);
@@ -770,6 +775,9 @@ export class Stage {
       state.swing.identity();
       state.angle.set(0, 0, 0);
       state.vel.set(0, 0, 0);
+      state.pvel.set(0, 0, 0);
+      state.prevPvel.set(0, 0, 0);
+      state.pacc.set(0, 0, 0);
       state.ready = false;
     }
   }
@@ -796,8 +804,10 @@ export class Stage {
     const stiffness = 9;
     const damping = 2.5;
     const drive = 10;
+    const linDrive = 0.8;
     const maxSwing = 1.1;
     const maxVel = 24;
+    const maxStep = 8;
     const parentNow = new THREE.Quaternion();
     const boneNow = new THREE.Quaternion();
     const boneInv = new THREE.Quaternion();
@@ -805,14 +815,34 @@ export class Stage {
     const delta = new THREE.Quaternion();
     const local = new THREE.Quaternion();
     const axis = new THREE.Vector3();
+    const parentPos = new THREE.Vector3();
+    const rawVel = new THREE.Vector3();
+    const rawAcc = new THREE.Vector3();
+    const headW = new THREE.Vector3();
+    const tipW = new THREE.Vector3();
+    const boneDir = new THREE.Vector3();
+    const force = new THREE.Vector3();
     this.root.updateMatrixWorld(true);
     for (const bone of this._jiggleBones) {
       const state = this._jiggleState.get(bone.name);
       const parent = bone.parent;
       if (!state || !parent) continue;
       parent.getWorldQuaternion(parentNow);
+      parent.getWorldPosition(parentPos);
       if (!state.ready) {
         state.prevParent.copy(parentNow);
+        state.prevPos.copy(parentPos);
+        state.prevPvel.set(0, 0, 0);
+        state.pvel.set(0, 0, 0);
+        state.pacc.set(0, 0, 0);
+        state.len = 0.04 * (this.H || 1);
+        const firstChild = (bone.children || []).find((c) => c.isBone);
+        if (firstChild) {
+          bone.getWorldPosition(headW);
+          firstChild.getWorldPosition(tipW);
+          const span = headW.distanceTo(tipW);
+          if (span > 1e-4) state.len = span;
+        }
         state.moves = this._clipMovesBone(bone.name);
         state.base.copy(bone.quaternion);
         state.ready = true;
@@ -833,6 +863,36 @@ export class Stage {
       // the other way, so the chain trails the body.
       state.vel.addScaledVector(state.angle, -stiffness * step);
       state.vel.addScaledVector(axis, -drive * step);
+      // Pivot acceleration (stride bob) the twist above cannot feel: the tip
+      // lags opposite the acceleration, torque (r x a) / L. Smoothed, with a
+      // teleport guard so clip loop wraps coast instead of kicking.
+      rawVel.copy(parentPos).sub(state.prevPos).divideScalar(step);
+      if (rawVel.length() > maxStep) {
+        state.prevPos.copy(parentPos);
+        state.pvel.set(0, 0, 0);
+        state.prevPvel.set(0, 0, 0);
+        state.pacc.set(0, 0, 0);
+      } else {
+        state.pvel.lerp(rawVel, 1 - Math.exp(-25 * step));
+        rawAcc.copy(state.pvel).sub(state.prevPvel).divideScalar(step);
+        state.prevPvel.copy(state.pvel);
+        state.pacc.lerp(rawAcc, 1 - Math.exp(-18 * step));
+        bone.getWorldPosition(headW);
+        const tipBone = (bone.children || []).find((c) => c.isBone);
+        if (tipBone) tipBone.getWorldPosition(tipW);
+        else {
+          bone.getWorldQuaternion(boneNow);
+          tipW.set(0, 1, 0).applyQuaternion(boneNow).multiplyScalar(state.len).add(headW);
+        }
+        boneDir.copy(tipW).sub(headW);
+        const span = boneDir.length();
+        if (span > 1e-6 && state.pacc.lengthSq() > 1e-10) {
+          boneDir.divideScalar(span);
+          force.crossVectors(boneDir, state.pacc);
+          state.vel.addScaledVector(force, -(linDrive / Math.max(state.len, 1e-3)) * step);
+        }
+        state.prevPos.copy(parentPos);
+      }
       state.vel.multiplyScalar(Math.exp(-damping * step));
       if (state.vel.length() > maxVel) state.vel.setLength(maxVel);
       state.angle.addScaledVector(state.vel, step);
@@ -1103,6 +1163,7 @@ export class Stage {
       const holds = [];
       this.root.traverse((obj) => {
         if (!obj.isBone || !obj.parent || !obj.parent.isBone) return;
+        if (!this._playBoneVisible(obj.parent.name, obj.name)) return;
         if (obj.name && (obj.name.includes("_leaf") || obj.name.startsWith("ik_") || obj.name.startsWith("socket"))) return;
         const hold = new THREE.Group();
         hold.add(new THREE.Mesh(geo, mat), new THREE.LineSegments(edges, edgeMat));
@@ -1144,6 +1205,16 @@ export class Stage {
     this._placeSkeleton();
   }
 
+  // Per-bone visibility for the animated overlay. Same hidden/solo set as
+  // Rig, but not the Rig overlay tick: checking "Show skeleton" here must
+  // show the bones even if Rig's own tick is off. Stick style cannot filter
+  // per bone, so it stays whole; octa holds and dots filter below.
+  _playBoneVisible(parentName, name) {
+    const solo = this._soloSet();
+    if (solo && !(solo.has(parentName) || solo.has(name))) return false;
+    return !this.hiddenBones.has(parentName) && !this.hiddenBones.has(name);
+  }
+
   _placeSkeleton() {
     if ((!this.skel && !this.skelOcta) || !this.root) return;
     this.root.updateWorldMatrix(true, true);
@@ -1162,6 +1233,9 @@ export class Stage {
     for (const mesh of this.skelDots.group.children) {
       const bone = mesh.userData.bone;
       bone.getWorldPosition(mesh.position);
+      mesh.visible = this._playBoneVisible(
+        bone.parent && bone.parent.isBone ? bone.parent.name : "", mesh.userData.id,
+      );
       let size = full;
       const parent = bone.parent;
       if (parent && parent.isBone) {

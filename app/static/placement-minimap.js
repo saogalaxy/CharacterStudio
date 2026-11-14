@@ -46,6 +46,26 @@ const JOINTS = [
     front: [200, 214], side: [198, 214],
     tip: "Center of the hips where the legs meet the body. Seat in the pelvic core, slightly behind the front crease.",
   },
+  {
+    id: "breast_r", short: "Breast (R)", group: "r",
+    front: [184, 140], side: [178, 140],
+    tip: "Pivot inside the right breast mass, mid-tissue — not on the skin and not back at the chest wall. Drag the Rig dot to move it, then bind again.",
+  },
+  {
+    id: "breast_l", short: "Breast (L)", group: "l",
+    front: [216, 140], side: [178, 140],
+    tip: "Pivot inside the left breast mass, mid-tissue — not on the skin and not back at the chest wall. Drag the Rig dot to move it, then bind again.",
+  },
+  {
+    id: "glute_r", short: "Butt (R)", group: "r",
+    front: [190, 222], side: [208, 212],
+    tip: "Pivot inside the right butt cheek, mid-tissue. Drag the Rig dot to move it, then bind again.",
+  },
+  {
+    id: "glute_l", short: "Butt (L)", group: "l",
+    front: [210, 222], side: [208, 212],
+    tip: "Pivot inside the left butt cheek, mid-tissue. Drag the Rig dot to move it, then bind again.",
+  },
 
   // Character RIGHT (red) — screen-left when facing the character
   {
@@ -155,6 +175,8 @@ const JOINTS = [
 const BONES = [
   ["head_top", "head"], ["head", "neck_base"], ["neck_base", "spine_03"],
   ["spine_03", "spine_02"], ["spine_02", "spine_01"], ["spine_01", "pelvis"],
+  ["spine_03", "breast_r"], ["spine_03", "breast_l"],
+  ["pelvis", "glute_r"], ["pelvis", "glute_l"],
   ["neck_base", "clavicle_r"], ["clavicle_r", "upperarm_r"], ["upperarm_r", "lowerarm_r"],
   ["lowerarm_r", "hand_r"], ["hand_r", "hand_tip_r"],
   ["pelvis", "thigh_r"], ["thigh_r", "calf_r"], ["calf_r", "foot_r"], ["foot_r", "ball_r"], ["ball_r", "toe_r"],

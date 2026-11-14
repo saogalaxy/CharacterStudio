@@ -339,11 +339,11 @@ def add_secondary_bones(arm, body, joints, height, tissue=None):
         # around the chest wall or pelvis instead of sliding off it.
         cy = float(shell[:, 1].mean())
         head = Vector((float(shell[:, 0].mean()), base_y + (cy - base_y) * 0.4, float(shell[:, 2].mean())))
-        reach_out = 0.06 * height
+        reach_out = 0.025 * height
         if face == "front":
-            tail = head + Vector((0.0, fwd * reach_out, 0.015 * height))
+            tail = head + Vector((0.0, fwd * reach_out, 0.006 * height))
         else:
-            tail = head + Vector((0.0, -fwd * reach_out, -0.010 * height))
+            tail = head + Vector((0.0, -fwd * reach_out, -0.005 * height))
         made.append({
             "name": name,
             "parent": parent_name,

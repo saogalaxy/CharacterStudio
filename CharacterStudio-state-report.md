@@ -193,6 +193,19 @@ every frame (plain baked clip — stiff is correct); the 23.5 s clip
 shows it ON with all four chains, Walk playing. So the spring runs
 in the second clip at the measured ~8° — visible on a close-up,
 not a cartoon bounce.
+Bounce + placement round, 2026-11-14: user sees sway but no
+up-down bounce, Rig-hidden bones reappear on Animations, and asks
+if the pivots sit right. (1) Pivots are good (13–22 mm under the
+surface); tails stuck 4 cm into the air — auto tail shortened
+0.06h→0.025h for future binds (dragged overrides untouched).
+(2) The old spring only felt parent rotation; stride bob is mostly
+translation, so a pivot-acceleration drive was added
+(torque (r×a)/L, smoothed, teleport guard at 8 m/s): at gain 0.8
+breast vertical tip motion goes 0.8→3.8 cm, glute 0.8→2.9 cm, no
+NaN, unmarked bones at 0. (3) Animations skeleton + dots now skip
+Rig-hidden/soloed bones (stick style stays whole — helper can't
+filter). (4) Minimap gains Breast/Butt guides on front+side with
+placement tips. Bump to `?v=bg10`.
 Retuned exaggerated, 2026-11-14: stiffness 18→9, damping 6→2.5,
 drive 6→10, maxSwing 0.75→1.1 rad. Node full-loop on the real naga
 bind: Walk breasts 29.9°, glutes 11.8°; 8 s of Jog peaks at the
