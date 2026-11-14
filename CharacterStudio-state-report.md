@@ -227,6 +227,16 @@ unwired flashBlocked call that would have crashed the Animations
 panel on a stale rig, and a false stale-serve alarm that was
 PowerShell mangling unicode, not the server. Bump to bg16.
 
+Rename lookup fixed, 2026-11-14: the play-first rename baked
+actions under user labels, but the gate looked them up by clip
+id — renamed clips silently dropped their poses from the report
+(walk vanished entirely). The gate now uses the baked action
+objects directly and logs any skips. Verified: all five poses
+evaluate again. Note: the sit 37 mm crease gap is unchanged by
+the pelvis revert, so it is structural to the deep fold, not
+merge-related. Watching: 3 idle interpenetrations
+(spine_02/spine_03) this bind.
+
 Export plays bow first, 2026-11-14: Blender exports actions
 alphabetically, so Bow is clip 1 of 22 and 3D Viewer autoplays
 Animation 1. All clips ship (including library/source dupes like
