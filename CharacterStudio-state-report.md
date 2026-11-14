@@ -208,6 +208,15 @@ prior bind; smoothing has hit diminishing returns — what is left
 clusters at the shoulder ball joint and the sit hip crease, which
 are placement problems, not paint-math problems.
 
+Envelope reset, 2026-11-14: the user's envelope list is stacked
+experiments, and the backend could only set keys, never delete
+them. Fixed both directions: null deletes a key, place_dots
+preserves jiggle/tissue/envelopes/tags/fingers, and Rig gets a
+Reset button. Pushed as bg14, which needs a full relaunch
+(backend change). After the relaunch: press Reset, re-see the
+skeleton, rebind for the neutral baseline, then rebuild one
+region at a time.
+
 Head-cape guard, 2026-11-14: the Head-isolate screenshot proved
 head owned head *plus torso*. Measured on the bind: 39,005 back
 verts 53–129 mm from the head joint. New veto in `paint` — below

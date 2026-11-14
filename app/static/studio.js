@@ -1,4 +1,4 @@
-import { Stage, ENVELOPE_BONES, boneLabel, bonePlace, dotColorCss, envelopeColorCss, poseLabel, visibleDots } from "./stage.js?v=bg13";
+import { Stage, ENVELOPE_BONES, boneLabel, bonePlace, dotColorCss, envelopeColorCss, poseLabel, visibleDots } from "./stage.js?v=bg14";
 import { mountPlacementMinimap } from "./placement-minimap.js?v=af75";
 
 const STEPS = [
@@ -665,6 +665,16 @@ function drawRig() {
   box.appendChild(envNote);
   box.appendChild(eyeTools("env", ENVELOPE_BONES));
   fillEnvelopeKey(box, true);
+  const envReset = document.createElement("button");
+  envReset.type = "button";
+  envReset.textContent = "Reset envelopes";
+  envReset.title = "Clear every envelope size back to defaults. The next bind repaints from neutral.";
+  envReset.onclick = () => {
+    const clear = {};
+    for (const key of Object.keys(job.markers?.envelopes || {})) clear[key] = null;
+    postJSON("markers", { envelopes: clear });
+  };
+  box.appendChild(envReset);
   const fingers = document.createElement("select");
   for (const name of ["five", "four", "three", "mitten"]) {
     const option = document.createElement("option");

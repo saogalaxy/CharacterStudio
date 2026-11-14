@@ -703,6 +703,9 @@ class Studio:
                 allowed = bodymath.ENVELOPE_BONES + bodymath.ENVELOPE_OVERRIDE_BONES + bodymath.TISSUE_BONES
                 if key not in allowed:
                     continue
+                if value is None:
+                    stored.pop(key, None)
+                    continue
                 scale = float(value)
                 if not 0.5 <= scale <= 2:
                     raise ValueError(f"envelope {key} out of range")
