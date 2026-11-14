@@ -244,9 +244,21 @@ off the body (ours 11 cm low, AF flagged his too); both fixed
 by hand before binding. Skeleton proportions differ: pelvis
 height 60.5% of head-ankle here vs 68.5% AF; our spine length
 sits in spine_02/03 (12.3/11.3%) where AF spreads it evenly
-(~8/7/8%); our upper arm reads short (7.1% vs 14.1%). Walk
-swings agree in shape but not size — AF thigh ~60 deg vs our
-~37-47, AF foot 49 vs our 21; arms stiff both sides. Our gate:
+(~8/7/8%); our upper arm reads short (7.1% vs 14.1%). Walk swings agree in shape but not in size — AF thigh ~60 deg vs our
+~37-47 (CORRECTED 2026-11-14: my GLB-parse overstated both sides;
+Blender-evaluated ground truth is thigh 43/42, calf 75/74,
+foot 34/34 — effectively identical. The pipeline loses no
+motion. What reads as "more natural" in AF is root travel
+(1.57 m/loop) plus pelvis sway, both absent here: our library
+walks are all authored in place and our copier pins pelvis
+translation by design. Importing AF's CC0 walk_loop as a
+travelling extra clip instead. Done 2026-11-14: imported as
+`import_af_walk_loop` ("Walk Travel"), exported — root travels
+0.50/loop on our scale. False alarm logged too: first-vs-last
+key check looked frozen, but the loop-close key equals the
+first by design; mid-loop keys prove the travel. Head stays
+stiff in that clip (AF's `Head` vs our `head` — case mismatch,
+skipped by the copier, same bug class as the gate lookup.) Our gate:
 FAIL, walk gaps ~10-12 mm, sit 37.5 mm crease (same structural
 fold as naga). Weights head-to-head blocked: AF's exporter
 writes the file but this browser's download pipe fails past a
