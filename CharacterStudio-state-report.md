@@ -204,6 +204,12 @@ longer delete animations.json — the jiggle switch, selection, and
 fits survive marker/envelope edits now (that wipe is what kept
 turning the switch off).
 
+Export plays bow first, 2026-11-14: Blender exports actions
+alphabetically, so Bow is clip 1 of 22 and 3D Viewer autoplays
+Animation 1. All clips ship (including library/source dupes like
+Bow/bow); switch via the viewer's animation picker. Nothing to
+fix in the export.
+
 Sit fold vs stretch, 2026-11-14: the belly-button tear the user
 sees is fold crumple in deep sit, not stretch. The gate samples
 no torn edges in that zone; stills show idle clean, walk clean,
