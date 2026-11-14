@@ -1622,6 +1622,10 @@ export class Stage {
 
   _drawBones() {
     this._dropBones();
+    // In play/pose the animated skeleton from _syncSkeleton owns the overlay.
+    // These joints are the static bind pose, so drawing them here would put a
+    // second, T-posed skeleton on top of the one the clip is driving.
+    if (this.mode === "play" || this.mode === "pose") return;
     if (!this.joints || !this.boneOverlay) return;
     const segs = this._boneSegments();
     if (!segs.length) return;
@@ -1652,6 +1656,7 @@ export class Stage {
         group.add(hold);
       }
       group.userData.octa = { mat, edgeMat, edges };
+      group.visible = this.boneOverlay;
       this.bones = group;
       this.scene.add(group);
       return;

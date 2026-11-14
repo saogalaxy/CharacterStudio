@@ -87,10 +87,52 @@ motion. There is no run recorded here yet.
 - Verified here: the API stores and clears chains and the switch,
   rejects an unknown bone, and leaves `rig_stale` alone. The
   headless server boots with old jobs (`jiggle` empty, switch off).
-- Still open: watch it on `character_blue_ec4350` (or any bound
-  job) with a chain marked, then off, then on with no chain.
-  The bind gate is still FAIL, so the mesh still tears under the
-  jiggle. Judge the jiggle itself, not the bind.
+- Armed 2026-11-13 21:48 through the API on
+  `green_hair_anime_girl_ec8d9d`: `markers.json` `jiggle` is
+  `["head"]` and `animations.json` `jiggle` is `true`. The bind was
+  not touched (`rig_stale` false, rig files unchanged). The desktop
+  app has not been opened on it and no clip has been watched.
+- Still open: open that job, go to Animations, play Idle or Walk,
+  and record the switch on, then off, then on with the chain
+  cleared. The bind gate is still FAIL, so the mesh still tears
+  under the jiggle. Judge the jiggle itself, not the bind.
+
+## Blender bones drew two skeletons, fixed 2026-11-13
+
+Seen in the 21:57 recording on the Animations screen: ticking
+**Blender bones** drew a second, T-posed bind skeleton (long arms
+straight out) on top of the one the clip was driving. Not jiggle
+code and not the bind.
+
+Cause: `setBoneStyle()` in `app/static/stage.js` always called
+`_drawBones()`, which draws the static marker skeleton from
+`this.joints` — the joints left over from the last Rig visit.
+`_syncSkeleton()` owns the animated overlay in play/pose, so both
+ended up in the scene. `clearOverlay()` drops `this.bones` but
+never clears `this.joints`, which is why the stale positions were
+still there to redraw. The octa branch of `_drawBones` also
+returned without setting `this.bones.visible`.
+
+Fix (`app/static/stage.js`): `_drawBones()` now returns right after
+`_dropBones()` when `this.mode` is `play` or `pose`, and the octa
+branch sets `group.visible = this.boneOverlay`. The Rig screen uses
+`mode === "mesh"`, so its marker skeleton is unchanged.
+
+Verified without the window, on `green_hair_anime_girl_ec8d9d`'s
+real `rigged_animated.glb` loaded by the real `GLTFLoader` in Node:
+
+| Step | Before | After |
+|---|---|---|
+| Rig, Blender bones on | static marker (26) | static marker (26) |
+| switch to Animations | animated octa (52) | animated octa (52) |
+| Blender bones off | animated stick + static stick | animated stick |
+| Blender bones on | animated octa + static octa (26) | animated octa (52) |
+
+`index.html` and the `stage.js` import in `studio.js` are bumped to
+`?v=bg02`. The headless server was started and the served
+`/static/stage.js?v=bg02` contains the guard; the server was then
+stopped. The desktop window has not been reopened on the fix.
+
 
 ## Character blue
 
@@ -428,3 +470,38 @@ bad weight paint from bones sitting off the mesh, because the
 weights are painted from the bone positions and the positions are
 not stored. It rules out custom envelope sizes, vertices left
 unweighted, and a too-strict 2.5 cutoff.
+
+## Naga bind re-run, 2026-11-13
+
+`naga_hd_caa97a` was re-bound at 21:44 with the code at `785ff7e`
+(`cs run naga_hd_caa97a rig --wait`, 68 s). The gate is `FAIL`
+again, and both `rig/deform_attribution.json` and `rig/report.json`
+came out **byte-identical** to the 20:38 bind (same MD5). The
+`4d9d1d0` wear-paint change does not alter this mesh, so the
+earlier `FAIL` was not stale.
+
+| Pose | Tears | Worst ratio | Worst absolute gap |
+|---|---|---|---|
+| idle@30 | 20 | 56.991× | 36.3 mm (clavicle_l / upperarm_l) |
+| walk@1 | 23 | 59.118× | 37.6 mm |
+| walk@9 | 26 | 58.453× | 36.8 mm |
+| walk@25 | 26 | 52.753× | 32.2 mm |
+| sit@20 | 56 | 57.024× | 35.8 mm |
+
+The five edge lists agree with the 20/23/26/26/56 counts quoted
+before the re-run, but the headline ratio is misleading. Every
+torn edge has a rest length of 0.41–1.35 mm; the ratio is division
+by a sub-millimetre edge, and the actual separation is 2–37 mm.
+At sit@20 the thighs are the largest *count* (thigh_l 15,
+thigh_r 13) but their gaps top out at 21.9 mm; the biggest gap is
+at the clavicle/`spine_03` armpit seam, then head/neck at 12.6–19.5 mm.
+The gate is counting real skinning seams, not a blown-out mesh, and
+`deform_gate` still keys on the ratio only. Left as is by choice;
+bind calibration is the next job.
+
+`logs/rig.txt` does not match the artifacts: it holds five
+`deform_pose` lines with 17/24/25/25/45 and one Blender header
+stamped 20:17–20:18, while the 21:45 bind wrote the 20/23/26/26/56
+attribution. The log is append-only (`runtime.spawn` opens `"a"`),
+so the fresh run should have added a block. Treat the artifacts as
+the record and the log as unreliable until that is chased.
