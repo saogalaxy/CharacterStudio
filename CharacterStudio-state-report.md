@@ -69,6 +69,29 @@ filling the silhouette. After the mesh workflow returns, the text
 changes to "mesh check" for the Blender check and the fill stays at
 1. When the step leaves `running`, the page shows the result again.
 
+## Jiggle physics
+
+Built 2026-11-13 (landed in commit `4d9d1d0`), not verified by watching a
+motion. There is no run recorded here yet.
+
+- The Rig panel's bone list has a **J** button on each row. It
+  marks that bone as a jiggle chain: the bone and every bone below
+  it. The list is `markers.json` `jiggle`. Marking a chain does not
+  invalidate the bind and does not delete the rig.
+- The Animations panel has a **Jiggle physics** switch, off by
+  default, stored as `animations.json` `jiggle`.
+- While a clip plays, `stage.js` runs a spring per chain bone from
+  the parent's motion and applies it after the clip and the fit.
+  The baked clip is not changed and no unmarked bone moves.
+- Not in the exported GLB. Fixed stiffness and damping, no sliders.
+- Verified here: the API stores and clears chains and the switch,
+  rejects an unknown bone, and leaves `rig_stale` alone. The
+  headless server boots with old jobs (`jiggle` empty, switch off).
+- Still open: watch it on `character_blue_ec4350` (or any bound
+  job) with a chain marked, then off, then on with no chain.
+  The bind gate is still FAIL, so the mesh still tears under the
+  jiggle. Judge the jiggle itself, not the bind.
+
 ## Character blue
 
 Job `character_blue_ec4350`. Source, T-pose, mesh, markers, rig, and
@@ -77,6 +100,73 @@ animations are done. The glb export is
 The Animations panel shows that path and a Show in folder button.
 On Rig, a tap or hover shows that dot's name, then it fades. The
 name list stays in the side panel. Finger dots stay unlabeled in that list.
+
+Bind deformation diagnosis, 2026-11-12 12:15, job
+`character_blue_ec4350`. One bind, no joint move and no envelope
+change (`envelopes` is still `{}`). Gate `FAIL`. Not done.
+
+| Pose | Tears | Worst stretch | Crushes | Interpenetrations |
+|---|---|---|---|---|
+| Idle @ 30 | 56 | 30.224× | 0 | 29 |
+| Walk @ 1 | 67 | 27.876× | 3 | 85 |
+| Walk @ 9 | 60 | 28.765× | 2 | 68 |
+| Walk @ 25 | 75 | 34.778× | 1 | 48 |
+| Mild crouch @ 20 | 100 | 52.688× | 11 | 24 |
+
+Sampled edges: 4007. `unweighted` 0. The tears cluster. On Idle,
+50 of 56 are owned by the clavicles, the upper arms, or the head.
+Walk stays on those same bones. Mild crouch adds the lower spine
+(`spine_01` 13) and the left thigh (7). They do not spread across
+the whole body. Crushes are few and, on the crouch, sit on the
+left thigh and the pelvis. The torn edges are real stretches:
+median rest length about 5 mm, median lengthening about 2–3 cm.
+`joints_off_body` is empty, so the dots are on the mesh. The
+record is `jobs/character_blue_ec4350/rig/deform_attribution.json`.
+Playback was not watched.
+
+Shoulder and neck calibration, same day, about 14:20. The previous
+markers are `D:\CharacterStudio\fallback\character_blue_markers_before_shoulder.json`.
+The neck, neck base, head, and crown were moved up into the neck
+column. The clavicles and shoulders were moved down onto the arm,
+off the collar. Envelope overrides, by bone name, not the sliders:
+clavicles 0.65, upper arms 0.70, `neck_01` 0.70, head 0.65. The
+backend now keeps those names. Gate still `FAIL`. Not done.
+
+| Pose | Tears | Worst stretch | Crushes |
+|---|---|---|---|
+| Idle @ 30 | 44 | 32.396× | 0 |
+| Walk @ 1 | 57 | 46.685× | 3 |
+| Walk @ 9 | 57 | 50.625× | 3 |
+| Walk @ 25 | 61 | 51.986× | 2 |
+| Mild crouch @ 20 | 83 | 69.279× | 8 |
+
+Idle tears fell from 56 to 44, and the head dropped out of that
+cluster. The clavicles still own the most tears, and the chest
+(`spine_03`) picked up 8. The worst stretch got larger on Walk and
+the crouch. The Walk stills (`rig/poses/walk_front.png` and
+`walk_9_side.png`) still show the head pitched forward and the
+jacket raised at the shoulders.
+
+## Fallback — character_11e49d
+
+Copied 2026-11-12 before any shoulder calibration. The copy is
+`D:\CharacterStudio\fallback\character_11e49d`. Git tag
+`fallback-character-11e49d` is commit `d72b1f8`. The tag is local
+only.
+
+The copy matches the live job for `markers.json` (16 joints differ
+from `joints_auto`: head, pelvis, upperarm_l, lowerarm_l,
+clavicle_l, thigh_l, calf_l, upperarm_r, lowerarm_r, clavicle_r,
+thigh_r, calf_r, spine_01, spine_02, spine_03, neck_base),
+`mesh.glb` (7,933,276 bytes), and `job.json`. Also copied:
+`mesh_check.json`, `surface.npy`, and `logs/`.
+
+`rig/rigged_animated.glb` and `animations.json` are not in the copy.
+They were already gone from the live job. `job.json` has rig and
+animations empty. The last marker save, 11:49, says "head top
+adjusted", and a marker edit clears the rig and the animations.
+The last bind log still names the deleted glb at 9,567,272 bytes.
+Calibration was not started.
 
 ## How to read a later change
 

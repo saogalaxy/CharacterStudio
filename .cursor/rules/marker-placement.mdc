@@ -1,0 +1,53 @@
+---
+description: Zoom-check marker and skeleton/rig joint placement on the mesh before bind or wear
+alwaysApply: true
+---
+
+# Marker & skeleton/rig placement checks
+
+Never bind, retune wear, or mark `skeleton_seen` from numbers alone. Critical landmarks must be **zoomed on the mesh** in both Markers and Skeleton/Rig views.
+
+## Order (hard)
+
+1. **Markers** — zoom each critical 8-dot → confirm on anatomy
+2. **Skeleton / Rig** — zoom each critical joint/bone end on the mesh → confirm inside/on the body
+3. **Bind** — only after both pass
+4. **Wear / paint** — only after markers + skeleton are trusted
+5. Do not change wear to “fix” a bad chin/crown/shoulder/knee joint
+
+## Zoom Markers (eight dots)
+
+- **Chin** — jaw tip / under lip, **not** mid-face (mouth/nose). Prefer the user’s hand-placed chin over auto when they disagree; defaults were fixed to target the jaw, but always zoom-check.
+- **Neck base** — sternum pit under the collarbones, not up under the chin.
+- **Clavicles** — from neck pit out toward the shoulders; **upperarm** in the deltoid socket on the body.
+- **Head region via chin** — drives neck/head; wrong chin height misplaces the whole head chain.
+- **Groin** — crotch height, not mid-belly or mid-thigh.
+- **Elbows / wrists / knees** — true joint crease, not mid-limb.
+
+## Zoom Skeleton / Rig (joints on mesh)
+
+Open Skeleton (or Rig with bones visible) and **orbit/zoom onto each joint** so the bone end is large in frame. On the Rig screen, turn on **Blender bones** so you see the real Blender bone positions on the mesh — not only the colored joint dots. Confirm each sits **on/inside the mesh**, not floating in hair, floating off skin, or buried in the wrong limb:
+
+| Joint | Must sit |
+|-------|----------|
+| neck / neck_base | In the neck column, above shoulders |
+| head / head_top | Skull center and crown — crown near mesh top, not mid-face or in ponytail only |
+| clavicle_l/r | Collarbone / shoulder root on the torso |
+| upperarm / lowerarm / hand | Inside the arm volume; hand not past mitt tip oddly |
+| spine_01..03 / pelvis | Torso core depth (not breast tip, not back hair) |
+| thigh / calf / foot | Inside the leg; knee at crease |
+
+Also check left/right symmetry in close-up when both sides are editable.
+
+## How to zoom
+
+- Studio window open: Markers first, then Skeleton/Rig — zoom each listed joint, screenshot the close-up, **read the image**.
+- Prefer joint close-ups over full-body frames — full-body hides mid-face chin and floating clavicles.
+- Headless/API: run `off_body` / `z/H` checks, then still get zoomed Markers **and** Skeleton/Rig shots of head, shoulders, hips, knees before `see_skeleton` or `rig`.
+
+## After a marker or joint move
+
+- Recompute joints from the eight dots when markers change (no stale `head_top`).
+- Keep mittens when the mesh has no T-pose finger splay.
+- Re-zoom the **same** marker and the **driven skeleton joints** after the write.
+- Only then `see_skeleton` / bind.

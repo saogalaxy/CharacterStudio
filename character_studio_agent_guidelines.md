@@ -13,7 +13,53 @@ Character Studio is a **native Windows desktop application**, not a standard web
 - Headless **Blender** and portable **Python/ComfyUI** runtimes located in `runtime/`.
 - A frontend UI rendered via `pywebview` / WebView2 (`app/static/`).
 
+**Agent drive:** Prefer the local API / MCP / CLI over desktop computer-use.
+Full how-to (tool names, CLI examples, Cursor `mcp.json`) lives in
+`AGENTS.md` § **Agent drive (MCP + CLI)** and `.cursor/rules/agent-drive-mcp-cli.mdc`.
+
+- Client: `app/agent_drive.py` → `http://127.0.0.1:8765` (auto-starts `--headless`)
+- CLI: `runtime\python\python.exe app\cs_cli.py …` (`ensure`, `jobs`, `run … --wait`, `weights`, `tears`, …)
+- MCP: `app/mcp_server.py` → tools `cs_ensure`, `cs_list_jobs`, `cs_get_job`, `cs_run_step`, `cs_see_skeleton`, `cs_get_markers`, `cs_put_markers`, `cs_weights`, `cs_tears`, `cs_poses`, `cs_rig_report`, `cs_stop`
+- Inspect bind without clicking: `cs_weights` / `cs_tears` / `jobs/<id>/rig/poses/*.png`
+
 **Rule:** Never treat the UI (`app.js`, `index.html`) as an isolated web page. Any frontend change must respect the underlying background Python job threads (`pipeline/jobs.py`), file pipelines, and native OS execution constraints.
+
+---
+
+## 1b. Marker + skeleton/rig zoom checks (before bind or wear)
+
+**Order:** markers (zoomed) → skeleton/rig joints (zoomed on mesh) → bind → only then wear/paint. Never “fix” a bad chin, crown, or floating joint with paint.
+
+**Do not bind or call `see_skeleton` from numbers alone.** Auto chin used to land mid-face on big-hair anime; defaults were tightened toward the jaw, but **prefer the user’s hand-placed chin / neck_base / clavicles when they disagree**. `off_body` empty is not enough without close-ups.
+
+### Markers (eight dots) — zoom each
+
+| Dot | Must sit on |
+|-----|-------------|
+| Chin | Jaw tip / under lip — **not** mouth, nose, or mid-face |
+| Groin | Crotch height — not mid-belly or mid-thigh |
+| Elbows / wrists / knees | True joint crease — not mid-limb |
+
+### Skeleton / Rig — zoom joints on the mesh
+
+In Skeleton (or Rig with bones on), orbit/zoom so each bone end fills the frame. Confirm the joint is **on/inside the mesh** (not floating in hair, off the skin, or in the wrong limb):
+
+| Joint | Must sit |
+|-------|----------|
+| neck / neck_base | Neck column, above shoulders |
+| head / head_top | Skull center and crown near mesh top — not mid-face / ponytail-only |
+| clavicle / upperarm / hand | Collarbone and inside arm / mitt volume |
+| spine_01..03 / pelvis | Torso core depth — not breast tip or back hair |
+| thigh / calf / foot | Inside leg; knee at crease |
+
+Check L/R symmetry in close-up when both sides matter.
+
+### How
+
+- Prefer **joint close-ups** over full-body frames.
+- Studio open: zoom Markers, then Skeleton/Rig; screenshot; **read the image**.
+- Headless: mesh/`off_body` checks **plus** zoomed Markers and Skeleton/Rig shots of head, shoulders, hips, knees before bind.
+- After edits: recompute joints from the eight markers; re-zoom marker **and** driven skeleton joints; keep **mitten** when hands are not T-pose finger-ready.
 
 ---
 

@@ -80,6 +80,35 @@ The UI never talks to the internet for generation. Weights are loaded from `runt
 
 ---
 
+## Agent drive (CLI + MCP)
+
+AI agents can run the same local API the window uses — including **headless** (no WebView).
+**Models/agents:** start at `AGENTS.md` § **Agent drive (MCP + CLI)** and
+`.cursor/rules/agent-drive-mcp-cli.mdc` (always-on Cursor rule).
+
+| Piece | Path |
+|--------|------|
+| HTTP API | `http://127.0.0.1:8765/api/...` (`app/app.py --headless`) |
+| Client | `app/agent_drive.py` |
+| CLI | `runtime\python\python.exe app\cs_cli.py …` |
+| MCP | `app/mcp_server.py` → tools `cs_*` (Cursor `mcp.json` name `character-studio`) |
+| Headless launch | `Launch-CharacterStudio-Headless.cmd` |
+
+```powershell
+cd D:\CharacterStudio\app
+..\runtime\python\python.exe cs_cli.py ensure
+..\runtime\python\python.exe cs_cli.py jobs
+..\runtime\python\python.exe cs_cli.py weights <job_id>
+..\runtime\python\python.exe cs_cli.py tears <job_id>
+..\runtime\python\python.exe cs_cli.py run <job_id> rig --wait
+```
+
+`cs_ensure` / `ensure` starts `--headless` if nothing is listening. Reload MCP in Cursor after adding the server so tools like `cs_list_jobs` / `cs_tears` appear.
+
+**Marker + skeleton placement:** Before bind, zoom close-ups of Markers dots **and** Skeleton/Rig joints on the mesh (chin, head/crown, neck, clavicles, spine, pelvis, knees) — see `character_studio_agent_guidelines.md` §1b and `.cursor/rules/marker-placement.mdc`. Do not trust full-body views, empty `off_body`, or auto chin on big-hair meshes.
+
+---
+
 ## Models & engines
 
 Pinned by the pipeline (names must match files under Comfy’s `models/` or the HF cache in `runtime/hf`).

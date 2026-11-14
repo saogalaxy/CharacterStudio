@@ -1,0 +1,44 @@
+---
+description: Drive Character Studio via MCP/CLI (not computer-use); how to ensure API, run steps, inspect weights/tears.
+alwaysApply: true
+---
+
+# Character Studio MCP + CLI
+
+Prefer the local job API over clicking the Studio window.
+
+## Surfaces
+
+| Surface | Location |
+|---------|----------|
+| API | `http://127.0.0.1:8765` (`app/app.py`, `--headless` ok) |
+| Client | `app/agent_drive.py` |
+| CLI | `runtime\python\python.exe app\cs_cli.py …` |
+| MCP | `app/mcp_server.py` → tools `cs_*` (Cursor: `user-character-studio`) |
+
+Details and `mcp.json` snippet: `AGENTS.md` § Agent drive.
+
+## MCP first
+
+1. `cs_ensure`
+2. `cs_list_jobs` / `cs_get_job`
+3. Edits: `cs_get_markers` → `cs_put_markers` → **zoom Markers + Skeleton/Rig on mesh** → `cs_see_skeleton`
+4. Bind: `cs_run_step` `{ step: "rig", wait: true }`
+5. Check: `cs_weights`, `cs_tears`, `cs_poses` (read the PNGs)
+
+Also: `cs_run_step` for `markers` / `animations` / etc., `cs_stop`, `cs_rig_report`.
+
+Never `cs_see_skeleton` or bind from numbers alone — see `marker-placement.mdc`.
+
+## CLI equivalent
+
+```powershell
+cd D:\CharacterStudio\app
+..\runtime\python\python.exe cs_cli.py ensure
+..\runtime\python\python.exe cs_cli.py jobs
+..\runtime\python\python.exe cs_cli.py run <job_id> rig --wait
+..\runtime\python\python.exe cs_cli.py weights <job_id>
+..\runtime\python\python.exe cs_cli.py tears <job_id>
+```
+
+If MCP is disconnected, use the CLI; do not fall back to desktop clicking unless the user asks for a visual the tools cannot provide.
