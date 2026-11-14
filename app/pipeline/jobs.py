@@ -112,17 +112,18 @@ class Job:
             self.meta["steps"]["skeleton"] = {"state": "empty"}
             shutil.rmtree(self.dir / "rig", ignore_errors=True)
             shutil.rmtree(self.dir / "export", ignore_errors=True)
-            self.path("animations").unlink(missing_ok=True)
         self.save()
 
     def invalidate_bind(self, keep_preview=True):
         """Markers moved: bind is out of date. Keep the GLB for viewport paint."""
+        # animations.json (switch, selection, fits) is left alone on purpose:
+        # it holds playback preferences, not bind output, and the bind
+        # re-copies every clip fresh anyway.
         self.meta["skeleton_seen"] = False
         for name in ("skeleton", "rig", "animations"):
             row = self.meta["steps"].setdefault(name, {})
             row.clear()
             row["state"] = "empty"
-        self.path("animations").unlink(missing_ok=True)
         shutil.rmtree(self.dir / "export", ignore_errors=True)
         has_rig = self.path("rig").is_file()
         if keep_preview and has_rig:

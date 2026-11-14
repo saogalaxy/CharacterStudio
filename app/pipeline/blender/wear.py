@@ -483,13 +483,21 @@ def paint(body, arm, height, det, secondary=()):
                             d[i] = 1e6
             # Skull and close hair follow the head; the far neck, back, and
             # lower chest do not — owning them to the head tears them off the
-            # spine. The face box keeps the jaw and cheeks on the head.
+            # spine. The face box keeps the jaw and cheeks on the head, with
+            # the exclusion threshold interpolated across the box height
+            # instead of cutting at its bottom edge (that cut is what splits
+            # the throat open): nothing vetoed at the top, the hard hair_r
+            # rule at the bottom, continuous across the line.
             if (head_i is not None and head_z is not None and spine_y is not None
-                    and vert[2] < head_z - 0.03 * height
-                    and d[head_i] > hair_r):
-                face = (vert[1] < spine_y - 0.005 * height and abs(vert[0]) < face_half
-                        and vert[2] > head_z - 0.06 * height)
-                if not face:
+                    and vert[2] < head_z - 0.03 * height):
+                in_face_column = (vert[1] < spine_y - 0.005 * height and abs(vert[0]) < face_half)
+                if in_face_column and vert[2] > head_z - 0.06 * height:
+                    f = (vert[2] - (head_z - 0.06 * height)) / (0.03 * height)
+                    f = min(max(f, 0.0), 1.0)
+                    f = f * f * (3.0 - 2.0 * f)
+                    if d[head_i] > hair_r + f * (1e6 - hair_r):
+                        d[head_i] = 1e6
+                elif d[head_i] > hair_r:
                     d[head_i] = 1e6
             # Sole / ankle: foot owns below the foot joint so calf does not wash out toes.
             if foot_l_i is not None and calf_l_i is not None and foot_l_z is not None:

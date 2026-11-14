@@ -193,6 +193,16 @@ uses the widest of the three envelope scales. Rebind: tears
 34/39/46/53/89 → 25/30/36/42/79, worst gaps flat at 10–17 mm, head
 cape still zero below the skull line, spine_01 owns no verts.
 Pelvis/thigh split kept — legs swing 40°+ every step.
+Throat ramp, 2026-11-14: the face-box bottom edge was its own
+cliff (full head above, banned below). Replaced with a
+smoothstep-interpolated exclusion threshold, continuous across the
+line by construction. Rebind: worst ratio 17–30 → 9–13, gaps
+10–17 → 8–14, idle 25→24, walk@25 42→33, sit 79→69 (walk@1/@9 tick
+up slightly); one walk interpenetration, watching it. Head is gone
+from the top tear owners. invalidate_bind and clear_after no
+longer delete animations.json — the jiggle switch, selection, and
+fits survive marker/envelope edits now (that wipe is what kept
+turning the switch off).
 Pelvis extension tried and reverted, same day: extending the merge
 to the pelvis stretched the sit hip crease to 38 mm with an
 interpenetration (butt needs to seat with the hips, not ride the
