@@ -404,6 +404,12 @@ def paint(body, arm, height, det, secondary=()):
         n: float(envelopes[n]) if n in envelopes else float(DEFAULT_ENVELOPE_SCALES.get(n, 1.0))
         for n in names
     }
+    # The mid-torso paints as one spine_02 zone: the widest of the three spine
+    # envelope scales wins, so no slider silently stops working.
+    torso_wide = max([float(applied[n]) for n in ("spine_01", "spine_02", "spine_03") if n in applied] or [1.0])
+    for n in ("spine_01", "spine_02", "spine_03"):
+        if n in applied:
+            applied[n] = torso_wide
     scales = np.array([applied[n] for n in names], dtype=np.float64)
     sigma = (0.02 * height * scales) ** 2
     neck_i = index.get("neck_01")
@@ -504,6 +510,12 @@ def paint(body, arm, height, det, secondary=()):
                 elif name.endswith("_r") and vert[0] > side:
                     d[i] = 1e6
             nearest = int(np.argmin(d))
+            # One mid-torso zone: belly and chest skin ride spine_02 instead of
+            # splitting into spine_01/02/03 bands. The bones still exist and
+            # rotate for clips and jiggle parents; only paint ownership merges.
+            # This runs before the blend set is built, so neighbors blend in.
+            if names[nearest] == "spine_01" or names[nearest] == "spine_03":
+                nearest = index["spine_02"]
             tag = tags.get(names[nearest], "body")
             if tag == "prop":
                 weights[names[nearest]].append((vi, 1.0))

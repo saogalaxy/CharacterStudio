@@ -184,6 +184,15 @@ effect on the next bind). Verified in Node on the fresh naga bind:
 Rig 24 holds with all four tissue capsules, slider 1.0→1.5 widens
 the tube exactly 1.5×, hide works; Animations 21 holds with
 parent→pivot capsules. Bump to `?v=bg11`.
+One mid-torso zone, 2026-11-14: the ownership view showed
+spine_01/02/03 banding across the belly, each band edge a tear
+risk. Paint now remaps spine_01/spine_03 picks to spine_02 before
+the blend set is built (bones still exist for clips and jiggle;
+only ownership merges, neighbors still blend in), and the merged
+zone uses the widest of the three envelope scales. Rebind: tears
+34/39/46/53/89 → 25/30/36/42/79, worst gaps flat at 10–17 mm, head
+cape still zero below the skull line, spine_01 owns no verts.
+Pelvis/thigh split kept — legs swing 40°+ every step.
 
 Head-cape guard, 2026-11-14: the Head-isolate screenshot proved
 head owned head *plus torso*. Measured on the bind: 39,005 back
