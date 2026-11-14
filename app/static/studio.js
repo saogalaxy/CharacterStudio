@@ -1064,7 +1064,7 @@ function drawAnimations() {
     const chains = job.markers?.jiggle || [];
     jiggle.append("Jiggle physics", tip(chains.length
       ? `Chains marked: ${chains.join(", ")}.`
-      : "No chains marked. Mark chains with J on the Rig bone list."), jiggleTick);
+      : "No chains marked."), jiggleTick);
     box.appendChild(jiggle);
   }
   drawSaved(box);
