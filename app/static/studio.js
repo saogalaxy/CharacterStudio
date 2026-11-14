@@ -1,4 +1,4 @@
-import { Stage, ENVELOPE_BONES, boneLabel, bonePlace, dotColorCss, envelopeColorCss, poseLabel, visibleDots } from "./stage.js?v=bg14";
+import { Stage, ENVELOPE_BONES, boneLabel, bonePlace, dotColorCss, envelopeColorCss, poseLabel, visibleDots } from "./stage.js?v=bg15";
 import { mountPlacementMinimap } from "./placement-minimap.js?v=af75";
 
 const STEPS = [

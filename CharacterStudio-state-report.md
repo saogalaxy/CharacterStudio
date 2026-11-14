@@ -258,6 +258,11 @@ Robustness + hinge pins, 2026-11-14: estimate compute is
 token-guarded with error logging, progress cursor, material-array
 safety, and skips heat meshes; along-bone arrows replaced by hinge
 pins (the old ones just retraced the skeleton). Bump to `?v=bg13`.
+Estimate poll fix, 2026-11-14: the panel polls every 1.5 s and each
+poll aborted and restarted the chunked compute, so a 1.4 M mesh
+never finished — eternal spinner. Same-stamp polls now let the run
+finish; only moved dots trigger a restart. Verified in Node
+against the real mesh. Bump to `?v=bg15`.
 
 Export helper text removed, 2026-11-14: the Animations panel
 showed a literal `<name>_glb.glb / …` placeholder plus an ellipsis

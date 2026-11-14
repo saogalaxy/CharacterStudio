@@ -579,6 +579,7 @@ export class Stage {
     this._estStamp = "";
     this._estMesh = null;
     this._estToken = 0;
+    this._estComputing = "";
     this.wantArrows = false;
     this.arrowGroup = null;
     this.bones = null;
@@ -673,10 +674,12 @@ export class Stage {
     this._dropBones();
     this._dropArrows();
     this.extraFrames = {};
+    this._estToken++;
     this._estOwners = null;
     this._estSegs = [];
     this._estStamp = "";
     this._estMesh = null;
+    this._estComputing = "";
     this.envelopes.clear();
     this.fingerTips = null;
     this.picked = null;
@@ -1415,13 +1418,18 @@ export class Stage {
       this._paintEstimate();
       return;
     }
+    // The panel polls every 1.5 s; without this guard each poll would abort
+    // the chunked run and restart it, so a big mesh never finishes.
+    if (this._estComputing === stamp) return;
+    const token = ++this._estToken;
+    this._estComputing = stamp;
+    if (this.box) this.box.style.cursor = "progress";
     const segs = [];
     for (const [a, b] of LINKS) {
       if (!joints[a] || !joints[b]) continue;
       segs.push({ a: toThree(joints[a]), b: toThree(joints[b]), owner: b });
     }
-    if (!segs.length) { this._clearEstimate(); return; }
-    const token = ++this._estToken;
+    if (!segs.length) { this._estComputing = ""; this._clearEstimate(); return; }
     this._estMesh = mesh;
     this._estStamp = stamp;
     this._estSegs = segs;
@@ -1430,8 +1438,9 @@ export class Stage {
     const owners = new Uint8Array(count);
     const step = (start) => {
       if (token !== this._estToken) return;
+      let end = start;
       try {
-        const end = Math.min(count, start + 100000);
+        end = Math.min(count, start + 100000);
         for (let i = start; i < end; i++) {
           const px = pos[i * 3], py = pos[i * 3 + 1], pz = pos[i * 3 + 2];
           let best = 0, bestD = Infinity;
@@ -1456,10 +1465,10 @@ export class Stage {
       if (end < count) { setTimeout(() => step(end), 0); return; }
       if (token !== this._estToken) return;
       this._estOwners = owners;
+      this._estComputing = "";
       if (this.box) this.box.style.cursor = "";
       this._paintEstimate();
     };
-    if (this.box) this.box.style.cursor = "progress";
     step(0);
   }
 
@@ -1468,6 +1477,7 @@ export class Stage {
     this._estSegs = [];
     this._estStamp = "";
     this._estMesh = null;
+    this._estComputing = "";
     if (this.box) this.box.style.cursor = "";
     const mesh = this._estimateMesh();
     if (mesh && mesh.geometry.getAttribute("color")) mesh.geometry.deleteAttribute("color");
