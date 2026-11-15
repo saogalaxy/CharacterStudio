@@ -261,7 +261,10 @@ stiff in that clip (AF's `Head` vs our `head` — case mismatch,
 skipped by the copier, same bug class as the gate lookup.)
 Fixed 2026-11-14: node renamed in the motions file, re-exported
 (head swings with the neck now, stride reads normal); travel
-re-verified +0.50/loop on facing. Our gate:
+re-verified +0.50/loop on facing. Note 2026-11-15: the import
+vanished mid-session (x/Clear-all deletes the motion file) and
+the app caches retargets by name, so it kept playing the pre-fix
+ghost until relaunch. Re-imported fixed, reselected. Our gate:
 FAIL, walk gaps ~10-12 mm, sit 37.5 mm crease (same structural
 fold as naga). Weights head-to-head blocked: AF's exporter
 writes the file but this browser's download pipe fails past a
