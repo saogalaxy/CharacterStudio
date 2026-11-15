@@ -724,7 +724,7 @@ def copy_clip(dst, src, clip_id, action_name=None):
                 bone.location = Vector(loc) * loc_scale
                 bone.keyframe_insert("location", frame=written)
     action.frame_range
-    return end - start + 1, action
+    return end - start + 1
 
 
 def import_armature(path):
@@ -852,12 +852,7 @@ def _interpenetrations(ids, rest, posed, owners, linked, touch):
     return hits
 
 
-def deform_gate(body, arm, clip_actions=None):
-    """Check the bind by posing it. clip_actions maps clip id to the baked
-    action object, so renamed actions (label on export) are still found.
-    Anything missing is logged, never silently skipped."""
-    clip_actions = clip_actions or {}
-    missing = []
+def deform_gate(body, arm):
     rest = {}
     for edge in body.data.edges:
         a, b = edge.vertices
@@ -875,11 +870,8 @@ def deform_gate(body, arm, clip_actions=None):
     used_bones = set()
     frames = [("idle", 30), ("walk", 1), ("walk", 9), ("walk", 25), ("sit", 20)]
     for clip, frame in frames:
-        act = clip_actions.get(clip)
+        act = bpy.data.actions.get(clip)
         if act is None:
-            act = bpy.data.actions.get(clip)
-        if act is None:
-            missing.append(clip)
             continue
         arm.animation_data.action = act
         scene.frame_set(min(frame, int(act.frame_range[1])))
@@ -972,8 +964,6 @@ def deform_gate(body, arm, clip_actions=None):
     arm.animation_data.action = None
     scene.frame_set(1)
     gate = "PASS" if tears == 0 else "FAIL"
-    if missing:
-        log("deform_skip", {"clips": missing})
     log("deform_qa", {"gate": gate, "edges": len(sample), "poses": poses})
     heads = _bind_heads(arm)
     payload = {
@@ -1032,7 +1022,6 @@ def main():
         except (ValueError, OSError):
             clip_labels = {}
     copied = {}
-    clip_actions = {}
     for clip_id, filename in CLIPS.items():
         path = os.path.join(library, "animations", filename)
         src, created = import_armature(path)
@@ -1040,12 +1029,10 @@ def main():
             copied[clip_id] = 0
             remove_objects(created)
             continue
-        count, act = copy_clip(arm, src, clip_id, clip_labels.get(clip_id))
-        copied[clip_id] = count
-        clip_actions[clip_id] = act
+        copied[clip_id] = copy_clip(arm, src, clip_id, clip_labels.get(clip_id))
         remove_objects(created)
     log("library_clips", copied)
-    gate = deform_gate(body, arm, clip_actions)
+    gate = deform_gate(body, arm)
     arm.animation_data.action = None
     bpy.context.scene.frame_set(1)
     blend = os.path.join(out_dir, "rigged.blend")

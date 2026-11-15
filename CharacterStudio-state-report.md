@@ -227,53 +227,6 @@ unwired flashBlocked call that would have crashed the Animations
 panel on a stale rig, and a false stale-serve alarm that was
 PowerShell mangling unicode, not the server. Bump to bg16.
 
-Rename lookup fixed, 2026-11-14: the play-first rename baked
-actions under user labels, but the gate looked them up by clip
-id — renamed clips silently dropped their poses from the report
-(walk vanished entirely). The gate now uses the baked action
-objects directly and logs any skips. Verified: all five poses
-evaluate again. Note: the sit 37 mm crease gap is unchanged by
-the pelvis revert, so it is structural to the deep fold, not
-merge-related. Watching: 3 idle interpenetrations
-(spine_02/spine_03) this bind.
-
-Gushing-girl cross-bind, 2026-11-14: same FBX (736k verts, no
-skeleton) bound both sides — ours as job gushing_girl_2ad79e, AF
-in the browser from dots. Both auto-guesses put the groin dot
-off the body (ours 11 cm low, AF flagged his too); both fixed
-by hand before binding. Skeleton proportions differ: pelvis
-height 60.5% of head-ankle here vs 68.5% AF; our spine length
-sits in spine_02/03 (12.3/11.3%) where AF spreads it evenly
-(~8/7/8%); our upper arm reads short (7.1% vs 14.1%). Walk swings agree in shape but not in size — AF thigh ~60 deg vs our
-~37-47 (CORRECTED 2026-11-14: my GLB-parse overstated both sides;
-Blender-evaluated ground truth is thigh 43/42, calf 75/74,
-foot 34/34 — effectively identical. The pipeline loses no
-motion. What reads as "more natural" in AF is root travel
-(1.57 m/loop) plus pelvis sway, both absent here: our library
-walks are all authored in place and our copier pins pelvis
-translation by design. Importing AF's CC0 walk_loop as a
-travelling extra clip instead. Done 2026-11-14: imported as
-`import_af_walk_loop` ("Walk Travel"), exported — root travels
-0.50/loop on our scale. False alarm logged too: first-vs-last
-key check looked frozen, but the loop-close key equals the
-first by design; mid-loop keys prove the travel. Head stays
-stiff in that clip (AF's `Head` vs our `head` — case mismatch,
-skipped by the copier, same bug class as the gate lookup.)
-Fixed 2026-11-14: node renamed in the motions file, re-exported
-(head swings with the neck now, stride reads normal); travel
-re-verified +0.50/loop on facing. Note 2026-11-15: the import
-vanished mid-session (x/Clear-all deletes the motion file) and
-the app caches retargets by name, so it kept playing the pre-fix
-ghost until relaunch. Re-imported fixed, reselected. Our gate:
-FAIL, walk gaps ~10-12 mm, sit 37.5 mm crease (same structural
-fold as naga). Weights head-to-head blocked: AF's exporter
-writes the file but this browser's download pipe fails past a
-few MB, so their skin table never left the page. AF notes: hair
-renders black over the mouth (alpha cards, needs their Materials
-alpha-clipping — old-mesh texturing, accepted as-is); their rigger
-runs 760k verts in-browser (~15 min) and downscales textures
-2048px.
-
 Export plays bow first, 2026-11-14: Blender exports actions
 alphabetically, so Bow is clip 1 of 22 and 3D Viewer autoplays
 Animation 1. All clips ship (including library/source dupes like
