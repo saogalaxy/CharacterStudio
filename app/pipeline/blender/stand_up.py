@@ -62,12 +62,19 @@ def _torso_axis(co):
     cov = centered.T @ centered / max(len(centered) - 1, 1)
     evals, evecs = np.linalg.eigh(cov)
     axis = evecs[:, int(np.argmax(evals))]
-    # Point the axis toward the head (higher Z end of the cloud along this axis).
-    proj = centered @ axis
-    top = torso[proj >= np.percentile(proj, 85)].mean(axis=0)
-    bot = torso[proj <= np.percentile(proj, 15)].mean(axis=0)
-    if np.dot(top - bot, axis) < 0:
-        axis = -axis
+    # Point the axis toward the head. PCA sign is arbitrary, so orient it:
+    # the head end carries the outstretched arms, by far the widest part
+    # of a T-pose — wider than the feet end under any tilt. Measure on the
+    # FULL cloud (the PCA band above deliberately excludes the arms).
+    # Narrow-vs-wide trunk comparisons fail on big hair; arm span does not.
+    proj_full = (co - co.mean(axis=0)) @ axis
+    hi = co[proj_full >= np.percentile(proj_full, 92)]
+    lo = co[proj_full <= np.percentile(proj_full, 8)]
+    if len(hi) >= 8 and len(lo) >= 8:
+        spread_hi = float(hi[:, 0].max() - hi[:, 0].min())
+        spread_lo = float(lo[:, 0].max() - lo[:, 0].min())
+        if spread_hi < spread_lo:
+            axis = -axis
     return axis / (np.linalg.norm(axis) + 1e-12)
 
 
