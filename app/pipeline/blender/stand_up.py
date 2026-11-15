@@ -65,15 +65,17 @@ def _torso_axis(co):
     # Point the axis toward the head. PCA sign is arbitrary, so orient it:
     # the head end carries the outstretched arms, by far the widest part
     # of a T-pose — wider than the feet end under any tilt. Measure on the
-    # FULL cloud (the PCA band above deliberately excludes the arms).
-    # Narrow-vs-wide trunk comparisons fail on big hair; arm span does not.
+    # FULL cloud (the PCA band above deliberately excludes the arms). Use
+    # wide 25% end bands so the arms are always inside one of them;
+    # narrow tip bands can catch only spread feet and miss the arms
+    # entirely. Flip only on a clear margin, otherwise keep status quo.
     proj_full = (co - co.mean(axis=0)) @ axis
-    hi = co[proj_full >= np.percentile(proj_full, 92)]
-    lo = co[proj_full <= np.percentile(proj_full, 8)]
+    hi = co[proj_full >= np.percentile(proj_full, 75)]
+    lo = co[proj_full <= np.percentile(proj_full, 25)]
     if len(hi) >= 8 and len(lo) >= 8:
         spread_hi = float(hi[:, 0].max() - hi[:, 0].min())
         spread_lo = float(lo[:, 0].max() - lo[:, 0].min())
-        if spread_hi < spread_lo:
+        if spread_lo > 1.15 * spread_hi:
             axis = -axis
     return axis / (np.linalg.norm(axis) + 1e-12)
 
