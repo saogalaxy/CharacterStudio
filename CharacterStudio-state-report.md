@@ -258,7 +258,10 @@ travelling extra clip instead. Done 2026-11-14: imported as
 key check looked frozen, but the loop-close key equals the
 first by design; mid-loop keys prove the travel. Head stays
 stiff in that clip (AF's `Head` vs our `head` — case mismatch,
-skipped by the copier, same bug class as the gate lookup.) Our gate:
+skipped by the copier, same bug class as the gate lookup.)
+Fixed 2026-11-14: node renamed in the motions file, re-exported
+(head swings with the neck now, stride reads normal); travel
+re-verified +0.50/loop on facing. Our gate:
 FAIL, walk gaps ~10-12 mm, sit 37.5 mm crease (same structural
 fold as naga). Weights head-to-head blocked: AF's exporter
 writes the file but this browser's download pipe fails past a
